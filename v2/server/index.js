@@ -249,20 +249,38 @@ app.get("/fanart/:filename", async (request, response, next) => {
   }
 });
 
-app.get(/^\/(admin|fanart)\/?$/, (request, response) => {
+function escapeHtmlAttribute(value) {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
+}
+
+// Link-preview crawlers read the initial HTML without running React. Resolve
+// absolute preview URLs at runtime so raw-IP hosting and domain hosting work.
+function sendSitePage(request, response) {
   const indexFile = path.join(distDir, "index.html");
   if (!fs.existsSync(indexFile)) return response.status(404).send("Build the v2 app with npm run build first.");
-  response.sendFile(indexFile);
-});
+  let origin;
+  try {
+    const publicUrl = new URL(process.env.PUBLIC_SITE_URL || `${request.protocol}://${request.get("host")}`);
+    if (!["http:", "https:"].includes(publicUrl.protocol)) throw new Error("Invalid site protocol");
+    origin = publicUrl.origin;
+  } catch {
+    return response.status(400).send("Invalid public site URL");
+  }
+  const pagePath = request.path === "/index.html" ? "/" : request.path;
+  const html = fs.readFileSync(indexFile, "utf8")
+    .replaceAll("__SITE_ORIGIN__", escapeHtmlAttribute(origin))
+    .replaceAll("__PAGE_URL__", escapeHtmlAttribute(`${origin}${pagePath}`));
+  response.set("Cache-Control", "no-cache");
+  response.type("html").send(html);
+}
+
+app.get(/^\/(admin|fanart)\/?$/, sendSitePage);
+app.get(["/", "/index.html"], sendSitePage);
 
 // This fallback serves seeded images while local development runs without DB.
 app.use("/fanart", express.static(fanartDir, { maxAge: "1h" }));
-if (fs.existsSync(distDir)) app.use(express.static(distDir));
-app.get(/.*/, (request, response) => {
-  const indexFile = path.join(distDir, "index.html");
-  if (fs.existsSync(indexFile)) return response.sendFile(indexFile);
-  response.status(404).send("Build the v2 app with npm run build first.");
-});
+if (fs.existsSync(distDir)) app.use(express.static(distDir, { index: false }));
+app.get(/.*/, sendSitePage);
 
 async function waitForDatabase() {
   if (!isDatabaseConfigured()) return false;

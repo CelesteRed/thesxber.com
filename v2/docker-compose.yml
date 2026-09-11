@@ -31,6 +31,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8787
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql://sxber:change-this-postgres-password@db:5432/sxber}
       DATABASE_SSL: ${DATABASE_SSL:-false}
       DATABASE_STARTUP_RETRIES: ${DATABASE_STARTUP_RETRIES:-30}

@@ -55,6 +55,8 @@ The browser panel is available at `http://localhost:5173/admin` during Vite deve
 
 ## Production
 
+The initial HTML includes [Open Graph](https://ogp.me/) link-preview metadata with Fanart 1 and Sxber's introduction. The backend resolves absolute image/page URLs using `PUBLIC_SITE_URL` when set, or the request origin for raw-IP hosting. Set `PUBLIC_SITE_URL=https://your-domain.example` when moving behind a production proxy. Preview images use the original JPEG for compatibility; the public gallery continues to serve WebP.
+
 ```powershell
 npm run build
 npm start
