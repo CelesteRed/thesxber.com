@@ -18,6 +18,7 @@ import {
 } from "./auth.js";
 import { closeDatabase, initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
 import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk } from "./fanart.js";
+import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
 
@@ -43,6 +44,21 @@ const corsOptions = configuredOrigins.length
   : undefined;
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
+
+const apiRateLimit = createIpRateLimiter({
+  windowMs: positiveInteger(process.env.RATE_LIMIT_WINDOW_SECONDS, 60) * 1000,
+  maxRequests: positiveInteger(process.env.RATE_LIMIT_MAX_REQUESTS, 120)
+});
+const authRateLimit = createIpRateLimiter({
+  windowMs: positiveInteger(process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS, 900) * 1000,
+  maxRequests: positiveInteger(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, 30),
+  message: "Too many authentication requests. Please try again later."
+});
+
+// Keep API traffic bounded per resolved client IP while leaving cacheable site
+// assets and fanart images available for normal browser loads.
+app.use("/api", apiRateLimit);
+app.use("/api/auth", authRateLimit);
 
 function tokenMatches(expected, provided) {
   if (!expected || !provided) return false;

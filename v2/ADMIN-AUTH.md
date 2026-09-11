@@ -46,11 +46,18 @@ AUTH_COOKIE_SECURE=true
 ADMIN_SESSION_TTL_SECONDS=43200
 # Optional: set true only behind a trusted proxy to record forwarded client IPs in the ledger.
 TRUST_PROXY=false
+# API requests are limited per resolved client IP; these are the defaults.
+RATE_LIMIT_WINDOW_SECONDS=60
+RATE_LIMIT_MAX_REQUESTS=120
+AUTH_RATE_LIMIT_WINDOW_SECONDS=900
+AUTH_RATE_LIMIT_MAX_REQUESTS=30
 ```
 
 `DISCORD_ALLOWED_USER_IDS` is a comma-separated allowlist of Discord user IDs. It is the admin identity control now that the IP requirement has been removed. In production, use HTTPS and set `AUTH_COOKIE_SECURE=true` so browsers send the session cookie only over TLS.
 
 The internal API token is for trusted service-to-service calls such as the Discord bot. It is not a browser login credential. Rotate it if a trusted service is replaced or the value may have been exposed.
+
+The backend applies a fixed-window IP limiter to every `/api` route (120 requests per minute by default) and a stricter limiter to `/api/auth` (30 requests per 15 minutes by default). Rejected requests return HTTP `429`. These counters are held in the app process memory and reset when the container restarts; use a shared store before running multiple app replicas. The limiter uses Express's resolved `request.ip`, so enable `TRUST_PROXY` only behind a proxy you control.
 
 ## Admin behavior
 

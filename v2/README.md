@@ -30,6 +30,8 @@ If `YOUTUBE_API_KEY` is empty, the carousel uses the same style of demo tiles as
 
 The REST surface is intentionally small: `GET /api/health`, `GET /api/youtube`, `GET /api/fanart`, `GET /fanart/:filename`, Discord OAuth session/login/logout endpoints, and protected `POST`/`DELETE /api/admin/fanart` plus `GET /api/admin/activity` endpoints. The browser never receives database credentials or calls PostgreSQL directly.
 
+All `/api` requests are rate-limited per resolved client IP. The defaults allow 120 requests per 60 seconds, while `/api/auth` uses a stricter limit of 30 requests per 15 minutes. A rejected request receives HTTP `429` with `Retry-After` and `RateLimit-*` headers. Configure the windows and limits with `RATE_LIMIT_WINDOW_SECONDS`, `RATE_LIMIT_MAX_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`, and `AUTH_RATE_LIMIT_MAX_REQUESTS`. The limiter uses the same Express `request.ip` value as the activity ledger; set `TRUST_PROXY=true` only when a trusted reverse proxy sanitizes forwarded IP headers. The current single-container deployment uses an in-memory store, so limits reset when the app restarts and are not shared across multiple app replicas.
+
 ## Fanart updates
 
 The Discord app registers these commands in its direct messages:
