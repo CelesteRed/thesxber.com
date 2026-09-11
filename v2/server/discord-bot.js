@@ -23,8 +23,15 @@ const commands = [
     .setName("fanart-upload")
     .setDescription("Upload fanart to thesxber.com")
     .addAttachmentOption((option) => option.setName("file").setDescription("Image to publish").setRequired(true))
-    .addStringOption((option) => option.setName("title").setDescription("Optional gallery title").setMaxLength(120)),
+    .addStringOption((option) => option.setName("title").setDescription("Optional gallery title").setMaxLength(120))
+    .addStringOption((option) => option.setName("hover").setDescription("Optional Markdown hover tag").setMaxLength(2000)),
   new SlashCommandBuilder().setName("fanart-list").setDescription("List published fanart"),
+  new SlashCommandBuilder()
+    .setName("fanart-edit")
+    .setDescription("Edit a fanart title or Markdown hover tag")
+    .addStringOption((option) => option.setName("filename").setDescription("Filename, for example fanart50.png").setRequired(true))
+    .addStringOption((option) => option.setName("title").setDescription("New gallery title").setMaxLength(120))
+    .addStringOption((option) => option.setName("hover").setDescription("New Markdown hover tag").setMaxLength(2000)),
   new SlashCommandBuilder()
     .setName("fanart-remove")
     .setDescription("Remove published fanart")
@@ -106,6 +113,27 @@ export async function startDiscordBot() {
         return;
       }
 
+      if (interaction.commandName === "fanart-edit") {
+        const filename = interaction.options.getString("filename", true);
+        const title = interaction.options.getString("title");
+        const hoverMarkdown = interaction.options.getString("hover");
+        if (title === null && hoverMarkdown === null) {
+          await interaction.reply({ content: "Provide a title or hover Markdown value to update." });
+          return;
+        }
+        const headers = { ...internalHeaders(interaction), "content-type": "application/json" };
+        const { item } = await apiJson(`/api/admin/fanart/${encodeURIComponent(filename)}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            ...(title !== null ? { title } : {}),
+            ...(hoverMarkdown !== null ? { hoverMarkdown } : {})
+          })
+        });
+        await interaction.reply({ content: `Updated ${item.filename}.` });
+        return;
+      }
+
       if (interaction.commandName === "fanart-upload") {
         const attachment = interaction.options.getAttachment("file", true);
         const extension = extensionFromUpload({ originalname: attachment.name, mimetype: attachment.contentType });
@@ -125,6 +153,8 @@ export async function startDiscordBot() {
         form.append("file", new Blob([buffer], { type: attachment.contentType || "application/octet-stream" }), attachment.name || `upload${extension}`);
         const title = interaction.options.getString("title");
         if (title) form.append("title", title);
+        const hoverMarkdown = interaction.options.getString("hover");
+        if (hoverMarkdown) form.append("hoverMarkdown", hoverMarkdown);
         const { item: entry } = await apiJson("/api/admin/fanart", { method: "POST", headers: internalHeaders(interaction), body: form });
         await interaction.editReply(`Published ${entry.filename}. It is now live in the fanart gallery.`);
       }

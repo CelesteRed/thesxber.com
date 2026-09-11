@@ -17,6 +17,7 @@ docker compose up --build -d
 
 The Compose stack contains one app container and one PostgreSQL container. The app is attached to the public and private Compose networks; PostgreSQL is attached only to the private internal network and has no published port. Fanart images are stored as database binary data. The YouTube API key is used only by the backend; the backend stores the latest feed and refreshes it no more than once per 60 seconds before serving it to browsers. Same-host Compose database traffic uses `DATABASE_SSL=false`; enable TLS when using a remote or otherwise untrusted database network.
 The backend rate-limits `/api` traffic by resolved client IP, with a stricter limit for `/api/auth`; configure the windows and request counts through the rate-limit variables in `v2/.env.example`. The current single-container limiter is in-memory and resets when the app restarts.
+Fanart metadata includes a title and escaped light Markdown for the public hover tag. Authorized admins can edit both fields through the panel or the Discord DM app; the database migration adds `fanart.hover_markdown` for existing installations.
 
 ## Access and secrets
 

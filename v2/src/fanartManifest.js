@@ -11,6 +11,7 @@ export const staticFanart = [
     id: index,
     filename: `fanart${index}.${extension}`,
     url: `/fanart/fanart${index}.${extension}`,
-    title: `Fanart ${index}`
+    title: `Fanart ${index}`,
+    hoverMarkdown: ""
   };
 });

@@ -87,6 +87,7 @@ auth.login.success
 auth.login.denied
 auth.logout
 fanart.upload
+fanart.update
 fanart.delete
 ```
 
@@ -108,8 +109,11 @@ Protected admin endpoints use the Discord session cookie or a trusted internal r
 ```text
 GET    /api/admin/activity
 POST   /api/admin/fanart
+PATCH  /api/admin/fanart/:filename
 DELETE /api/admin/fanart/:filename
 ```
+
+The admin fanart list lets an authorized user edit each entry's title and hover Markdown. Hover tags support `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `__underline__`, and line breaks; the renderer escapes HTML before applying those formatting rules.
 
 The compatibility endpoint `GET /api/admin/access` reports the current session state for the admin UI.
 

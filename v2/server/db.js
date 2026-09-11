@@ -64,10 +64,13 @@ export async function initializeDatabase() {
         id BIGSERIAL PRIMARY KEY,
         filename TEXT NOT NULL UNIQUE,
         title TEXT NOT NULL DEFAULT '',
+        hover_markdown TEXT NOT NULL DEFAULT '',
         mime_type TEXT NOT NULL,
         image_data BYTEA NOT NULL,
         uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE fanart ADD COLUMN IF NOT EXISTS hover_markdown TEXT NOT NULL DEFAULT '';
 
       CREATE TABLE IF NOT EXISTS youtube_videos (
         video_id TEXT PRIMARY KEY,

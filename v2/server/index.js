@@ -17,7 +17,7 @@ import {
   startDiscordLogin
 } from "./auth.js";
 import { closeDatabase, initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
-import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk } from "./fanart.js";
+import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk, updateFanartMetadata } from "./fanart.js";
 import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
@@ -170,17 +170,41 @@ app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (reques
   try {
     const item = await saveFanartBuffer(request.file.buffer, {
       extension: extensionFromUpload(request.file),
-      title: request.body.title || ""
+      title: request.body.title || "",
+      hoverMarkdown: request.body.hoverMarkdown || ""
     });
     await recordAdminActivity(request, {
       action: "fanart.upload",
       resourceType: "fanart",
       resourceId: item.filename,
-      metadata: { title: item.title, mimeType: request.file.mimetype, sizeBytes: request.file.size }
+      metadata: { title: item.title, hasHoverMarkdown: Boolean(item.hoverMarkdown), mimeType: request.file.mimetype, sizeBytes: request.file.size }
     });
     response.status(201).json({ item });
   } catch (error) {
     response.status(400).json({ error: error.message || "Unable to save fanart" });
+  }
+});
+
+app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response) => {
+  try {
+    const item = await updateFanartMetadata(request.params.filename, {
+      title: request.body?.title,
+      hoverMarkdown: request.body?.hoverMarkdown
+    });
+    await recordAdminActivity(request, {
+      action: "fanart.update",
+      resourceType: "fanart",
+      resourceId: item.filename,
+      metadata: {
+        fields: [
+          request.body?.title !== undefined ? "title" : null,
+          request.body?.hoverMarkdown !== undefined ? "hoverMarkdown" : null
+        ].filter(Boolean)
+      }
+    });
+    response.json({ item });
+  } catch (error) {
+    response.status(400).json({ error: error.message || "Unable to update fanart" });
   }
 });
 

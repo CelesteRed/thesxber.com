@@ -30,6 +30,27 @@ function generateDemoTiles() {
   }));
 }
 
+function markdownToHtml(value) {
+  const escaped = String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+  return escaped
+    .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
+    .replace(/~~([\s\S]+?)~~/g, "<s>$1</s>")
+    .replace(/`([^`\n]+?)`/g, "<code>$1</code>")
+    .replace(/__([\s\S]+?)__/g, "<u>$1</u>")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n/g, "<br />");
+}
+
+function MarkdownText({ value }) {
+  return <span className="markdown-text" dangerouslySetInnerHTML={{ __html: markdownToHtml(value) }} />;
+}
+
 function IconButton({ icon, className = "", ...props }) {
   return (
     <button className={`switch-icon-btn ${className}`} {...props}>
@@ -192,7 +213,7 @@ function FanartModal({ onClose, onOpenLightbox }) {
         <h2 id="fanart-title"><i className="fa-solid fa-palette" /> Fanart Gallery</h2>
         <div className="fanart-grid">
           {entries.map((entry) => (
-            <img key={entry.filename} src={assetUrl(entry.url)} alt={entry.title || `Fanart ${entry.id}`} onClick={() => onOpenLightbox(assetUrl(entry.url))} />
+            <FanartTile key={entry.filename} entry={entry} onOpenLightbox={onOpenLightbox} />
           ))}
         </div>
       </div>
@@ -206,6 +227,113 @@ function Lightbox({ src, onClose }) {
     <div className="lightbox" role="dialog" aria-modal="true" onClick={(event) => event.target === event.currentTarget && onClose()}>
       <button className="close-lightbox" type="button" aria-label="Close" onClick={onClose}>&times;</button>
       <img src={src} alt="Enlarged Fanart" />
+    </div>
+  );
+}
+
+function tooltipPositionFor(element) {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  const maxCenterOffset = Math.min(140, Math.max(0, (window.innerWidth - 24) / 2));
+  const center = Math.min(Math.max(rect.left + rect.width / 2, maxCenterOffset), window.innerWidth - maxCenterOffset);
+  const placement = rect.top > 105 ? "above" : "below";
+  return {
+    left: center,
+    top: placement === "above" ? rect.top - 10 : rect.bottom + 10,
+    placement
+  };
+}
+
+function FanartTile({ entry, onOpenLightbox }) {
+  const tileRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipVisible = Boolean(tooltip);
+  const showTooltip = () => setTooltip(tooltipPositionFor(tileRef.current));
+  const hideTooltip = () => setTooltip(null);
+  const label = entry.title || `Fanart ${entry.id}`;
+  const hoverText = entry.hoverMarkdown?.trim() || label;
+
+  useEffect(() => {
+    if (!tooltipVisible) return undefined;
+    const update = () => setTooltip(tooltipPositionFor(tileRef.current));
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [tooltipVisible]);
+
+  return (
+    <div className="fanart-tile" ref={tileRef}>
+      <button
+        className="fanart-tile-button"
+        type="button"
+        aria-label={label}
+        aria-describedby={tooltip ? `fanart-hover-${entry.id}` : undefined}
+        onClick={() => onOpenLightbox(assetUrl(entry.url))}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
+        onFocus={showTooltip}
+        onBlur={hideTooltip}
+      >
+        <img src={assetUrl(entry.url)} alt={label} loading="lazy" />
+      </button>
+      {tooltip && (
+        <div id={`fanart-hover-${entry.id}`} className="fanart-hover-tag" data-placement={tooltip.placement} role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+          <MarkdownText value={hoverText} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FanartAdminRow({ entry, onRemove, onSaved }) {
+  const [title, setTitle] = useState(entry.title || "");
+  const [hoverMarkdown, setHoverMarkdown] = useState(entry.hoverMarkdown || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setTitle(entry.title || "");
+    setHoverMarkdown(entry.hoverMarkdown || "");
+  }, [entry.title, entry.hoverMarkdown]);
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, hoverMarkdown })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
+      if (!response.ok) throw new Error(data.error || "Unable to save fanart details.");
+      onSaved(data.item);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="admin-list-row">
+      <img src={assetUrl(entry.url)} alt="" />
+      <div className="admin-list-editor">
+        <strong className="admin-list-filename">{entry.filename}</strong>
+        <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
+        <label>Hover Markdown<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
+        <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
+        {error && <p className="admin-row-error" role="alert">{error}</p>}
+        <div className="admin-list-actions">
+          <button type="button" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+          <button type="button" onClick={() => onRemove(entry.filename)}>Remove</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -250,6 +378,7 @@ function formatActivityTime(value) {
 function AdminPage() {
   const [user, setUser] = useState(null);
   const [title, setTitle] = useState("");
+  const [hoverMarkdown, setHoverMarkdown] = useState("");
   const [file, setFile] = useState(null);
   const [entries, setEntries] = useState([]);
   const [activity, setActivity] = useState([]);
@@ -332,6 +461,7 @@ function AdminPage() {
     const formData = new FormData();
     formData.append("file", file);
     if (title.trim()) formData.append("title", title.trim());
+    if (hoverMarkdown.trim()) formData.append("hoverMarkdown", hoverMarkdown.trim());
     setMessage("Uploading…");
     try {
       const response = await fetch(apiUrl("/api/admin/fanart"), { method: "POST", credentials: "include", body: formData });
@@ -340,6 +470,7 @@ function AdminPage() {
       if (!response.ok) throw new Error(data.error || "Upload failed");
       setFile(null);
       setTitle("");
+      setHoverMarkdown("");
       event.target.reset();
       setMessage(`Uploaded ${data.item.filename}.`);
       await loadDashboard();
@@ -395,20 +526,23 @@ function AdminPage() {
         </div>
         <p className="admin-eyebrow">thesxber.com / v2</p>
         <h1>Fanart admin</h1>
-        <p className="admin-copy">You are signed in with Discord. Uploads and removals are recorded in the activity ledger, and the restricted <code>/fanart-upload</code> command uses the same audit trail.</p>
+        <p className="admin-copy">You are signed in with Discord. Uploads, edits, and removals are recorded in the activity ledger, and the restricted fanart commands use the same audit trail.</p>
         <form className="admin-form" onSubmit={upload}>
           <label>Fanart image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
           <label>Optional title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
+          <label>Hover Markdown<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
+          <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
           <button className="admin-submit" type="submit">Upload fanart</button>
         </form>
         <p className="admin-message" aria-live="polite">{message}</p>
         <div className="admin-list">
           {entries.map((entry) => (
-            <div className="admin-list-row" key={entry.filename}>
-              <img src={assetUrl(entry.url)} alt="" />
-              <span>{entry.filename}</span>
-              <button type="button" onClick={() => remove(entry.filename)}>Remove</button>
-            </div>
+            <FanartAdminRow
+              key={entry.filename}
+              entry={entry}
+              onRemove={remove}
+              onSaved={(updated) => setEntries((current) => current.map((item) => item.filename === updated.filename ? updated : item))}
+            />
           ))}
         </div>
         <section className="admin-ledger" aria-labelledby="activity-title">
