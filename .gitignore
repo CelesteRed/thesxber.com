@@ -1,0 +1,42 @@
+# Secrets and local environment files
+**/.env
+**/.env.*
+!**/.env.example
+**/secrets/
+**/*secret*
+**/*credential*
+**/*credentials*
+**/*token*
+**/*password*
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+
+# Local dependencies, builds, runtime data, and logs
+**/node_modules/
+**/dist/
+**/data/
+*.log
+
+# Local operating-system and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Keep local deployment and command scripts out of the public repository
+*.sh
+*.bash
+*.zsh
+*.fish
+*.ps1
+*.bat
+*.cmd
+
+# Host-specific deployment manifests and notes
+infra/*.conf
+infra/*.yaml
+infra/*.yml
+infra/*.py
+infra/WEBSITE.md
