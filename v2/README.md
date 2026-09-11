@@ -22,7 +22,9 @@ From this directory, copy `.env.example` to `.env`, set the database password an
 docker compose up --build -d
 ```
 
-The app is available at `http://localhost:8787`. PostgreSQL persists in the `sxber-postgres` volume. On the first boot, the existing `public/fanart` files are imported into the `fanart` table. New uploads are stored as `bytea` data in PostgreSQL, so the app container does not need SFTP or a writable image directory.
+The app is available at `http://localhost:8787`. PostgreSQL persists in the `sxber-postgres` volume. The database has no published host port and is attached only to Compose's internal `database` network; the app is the only service connected to that network. On the first boot, the existing `public/fanart` files are imported into the `fanart` table. New uploads are stored as `bytea` data in PostgreSQL, so the app container does not need SFTP or a writable image directory.
+
+For this same-host, private Docker network, PostgreSQL does not need TLS between the app and database, so `DATABASE_SSL=false` is the expected setting. If the database is moved to another host or crosses a network you do not fully control, enable `DATABASE_SSL=true` and use a TLS-capable PostgreSQL endpoint. Do not add a `ports` mapping to the `db` service; browsers should call the app's HTTP API, never PostgreSQL directly.
 
 If `YOUTUBE_API_KEY` is empty, the carousel uses the same style of demo tiles as v1. When configured, the backend requests the YouTube API and stores the latest 20 videos in PostgreSQL. Every browser reads `/api/youtube`; the backend refreshes the cache at most once per `YOUTUBE_CACHE_TTL_SECONDS` (60 seconds by default), so API keys and quota are never used per browser.
 

@@ -15,7 +15,7 @@ Copy-Item .env.example .env
 docker compose up --build -d
 ```
 
-The Compose stack contains one app container and one PostgreSQL container. Fanart images are stored as database binary data. The YouTube API key is used only by the backend; the backend stores the latest feed and refreshes it no more than once per 60 seconds before serving it to browsers.
+The Compose stack contains one app container and one PostgreSQL container. The app is attached to the public and private Compose networks; PostgreSQL is attached only to the private internal network and has no published port. Fanart images are stored as database binary data. The YouTube API key is used only by the backend; the backend stores the latest feed and refreshes it no more than once per 60 seconds before serving it to browsers. Same-host Compose database traffic uses `DATABASE_SSL=false`; enable TLS when using a remote or otherwise untrusted database network.
 
 ## Access and secrets
 
