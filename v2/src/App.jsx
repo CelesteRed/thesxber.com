@@ -254,7 +254,7 @@ function AdminPage() {
   const [entries, setEntries] = useState([]);
   const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
-  const [message, setMessage] = useState("Checking admin access…");
+  const [message, setMessage] = useState("Checking Discord session…");
 
   const loadEntries = useCallback(async () => {
     const response = await fetch(apiUrl("/api/fanart"), { credentials: "include" });
@@ -291,11 +291,7 @@ function AdminPage() {
 
     fetch(apiUrl("/api/auth/session"), { credentials: "include" })
       .then((response) => {
-        if (response.status === 403) {
-          window.location.replace("/");
-          return null;
-        }
-        if (!response.ok) throw new Error("The admin access check failed.");
+        if (!response.ok) throw new Error("The Discord session check failed.");
         return response.json();
       })
       .then((result) => {
@@ -310,7 +306,7 @@ function AdminPage() {
         }
       })
       .catch((error) => {
-        if (active) setMessage(error.message || "The admin access check failed.");
+        if (active) setMessage(error.message || "The Discord session check failed.");
       });
     return () => { active = false; };
   }, [loadDashboard]);

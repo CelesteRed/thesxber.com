@@ -37,30 +37,12 @@ function parseTrustProxy(value) {
 
 app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
 
-const allowedAdminIps = new Set(
-  (process.env.ADMIN_ALLOWED_IPS || "")
-    .split(",")
-    .map((ip) => ip.trim())
-    .filter(Boolean)
-);
-
 const configuredOrigins = (process.env.CORS_ORIGIN || "").split(",").map((origin) => origin.trim()).filter(Boolean);
 const corsOptions = configuredOrigins.length
   ? { credentials: true, origin: (origin, callback) => callback(null, !origin || configuredOrigins.includes(origin)) }
   : undefined;
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
-
-function normalizeIp(ip) {
-  const value = String(ip || "").trim().toLowerCase();
-  return value.startsWith("::ffff:") ? value.slice(7) : value;
-}
-
-function adminIpMatches(request) {
-  if (!allowedAdminIps.size) return false;
-  const requestIp = normalizeIp(request.ip);
-  return [...allowedAdminIps].some((allowedIp) => normalizeIp(allowedIp) === requestIp);
-}
 
 function tokenMatches(expected, provided) {
   if (!expected || !provided) return false;
@@ -73,16 +55,6 @@ function internalTokenMatches(request) {
   return tokenMatches(process.env.INTERNAL_API_TOKEN || "", request.get("x-internal-api-key") || "");
 }
 
-function requireAdminIp(request, response, next) {
-  if (!adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
-  next();
-}
-
-function requireAdminPageIp(request, response, next) {
-  if (!adminIpMatches(request)) return response.redirect(302, "/");
-  next();
-}
-
 async function requireAdmin(request, response, next) {
   const internal = internalTokenMatches(request);
   if (internal) {
@@ -90,7 +62,6 @@ async function requireAdmin(request, response, next) {
     request.adminAuthType = "internal";
     return next();
   }
-  if (!adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
   try {
     const session = await getAdminSession(request);
     if (!session) return response.status(401).json({ error: "Discord login required" });
@@ -126,10 +97,10 @@ async function sendAuthSession(request, response) {
   }
 }
 
-app.get("/api/auth/session", requireAdminIp, sendAuthSession);
-app.get("/api/admin/access", requireAdminIp, sendAuthSession);
+app.get("/api/auth/session", sendAuthSession);
+app.get("/api/admin/access", sendAuthSession);
 
-app.get("/api/auth/discord", requireAdminIp, (request, response) => {
+app.get("/api/auth/discord", (request, response) => {
   try {
     response.redirect(302, startDiscordLogin(request, response));
   } catch (error) {
@@ -138,7 +109,7 @@ app.get("/api/auth/discord", requireAdminIp, (request, response) => {
   }
 });
 
-app.get("/api/auth/discord/callback", requireAdminPageIp, async (request, response) => {
+app.get("/api/auth/discord/callback", async (request, response) => {
   try {
     const result = await completeDiscordLogin(request, response);
     response.redirect(302, result.allowed ? "/admin?auth=success" : "/admin?auth=denied");
@@ -148,7 +119,7 @@ app.get("/api/auth/discord/callback", requireAdminPageIp, async (request, respon
   }
 });
 
-app.post("/api/auth/logout", requireAdminIp, async (request, response) => {
+app.post("/api/auth/logout", async (request, response) => {
   try {
     const user = await getAdminSession(request);
     if (user) await logLogout(request, user);
@@ -237,7 +208,7 @@ app.get("/fanart/:filename", async (request, response, next) => {
   }
 });
 
-app.get(/^\/admin\/?$/, requireAdminPageIp, (request, response) => {
+app.get(/^\/admin\/?$/, (request, response) => {
   const indexFile = path.join(distDir, "index.html");
   if (!fs.existsSync(indexFile)) return response.status(404).send("Build the v2 app with npm run build first.");
   response.sendFile(indexFile);

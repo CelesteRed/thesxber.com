@@ -8,7 +8,7 @@ This is the React version of the original `v1` site. The public route keeps the 
 cd v2
 npm install
 Copy-Item .env.example .env
-# Edit .env with the YouTube, OAuth, admin IP, database, and Discord values you want to use.
+# Edit .env with the YouTube, OAuth, database, and Discord values you want to use.
 npm run dev
 ```
 
@@ -40,9 +40,7 @@ The Discord bot registers these commands:
 
 Every command checks `DISCORD_ALLOWED_USER_IDS` before doing anything. The bot accepts JPG, PNG, WEBP, and GIF files up to 15 MB. It calls the backend with `INTERNAL_API_TOKEN`, and upload/removal actions are written to the activity ledger with the invoking Discord user ID.
 
-The browser panel is available at `http://localhost:5173/admin` during Vite development or at the Compose app URL in production. It redirects to Discord OAuth2, then creates an HTTP-only server session only when the returned Discord user ID appears in `DISCORD_ALLOWED_USER_IDS`. The panel shows recent activity, including the Discord account, action, target, timestamp, and client IP. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and the exact registered `DISCORD_OAUTH_REDIRECT_URI` in the private `.env`; use the Vite URL when running the separate dev server and the public app URL for Compose. Set `AUTH_COOKIE_SECURE=true` when the app is served over HTTPS.
-
-Admin access is also restricted by `ADMIN_ALLOWED_IPS`. Enter comma-separated client IPs in `.env`; requests from other IPs are redirected away from `/admin`, and the server rejects their admin API requests. The committed `.env.example` uses the documentation-only addresses `203.0.113.10` and `198.51.100.25`, so replace them with the real allowlist in your private `.env`. If a trusted reverse proxy sits in front of Node, set `TRUST_PROXY=true` so Express reads the forwarded client IP. Only enable that when the proxy is controlled by you.
+The browser panel is available at `http://localhost:5173/admin` during Vite development or at the Compose app URL in production. It redirects to Discord OAuth2, then creates an HTTP-only server session only when the returned Discord user ID appears in `DISCORD_ALLOWED_USER_IDS`; there is no IP allowlist gate. The panel shows recent activity, including the Discord account, action, target, timestamp, and source IP. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and the exact registered `DISCORD_OAUTH_REDIRECT_URI` in the private `.env`; use the Vite URL when running the separate dev server and the public app URL for Compose. Set `AUTH_COOKIE_SECURE=true` when the app is served over HTTPS. If a trusted reverse proxy sits in front of Node, set `TRUST_PROXY=true` so the activity ledger records the forwarded client IP; only enable that when the proxy is controlled by you.
 
 ## Production
 
