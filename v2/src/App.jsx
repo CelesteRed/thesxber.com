@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { staticFanart } from "./fanartManifest";
+import FanartPage from "./FanartPage";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -30,27 +30,6 @@ function generateDemoTiles() {
   }));
 }
 
-function markdownToHtml(value) {
-  const escaped = String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-  return escaped
-    .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
-    .replace(/~~([\s\S]+?)~~/g, "<s>$1</s>")
-    .replace(/`([^`\n]+?)`/g, "<code>$1</code>")
-    .replace(/__([\s\S]+?)__/g, "<u>$1</u>")
-    .replace(/\r\n?/g, "\n")
-    .replace(/\n/g, "<br />");
-}
-
-function MarkdownText({ value }) {
-  return <span className="markdown-text" dangerouslySetInnerHTML={{ __html: markdownToHtml(value) }} />;
-}
-
 function IconButton({ icon, className = "", ...props }) {
   return (
     <button className={`switch-icon-btn ${className}`} {...props}>
@@ -75,13 +54,13 @@ function ExternalIconLink({ href, icon, className = "", label, onMouseEnter }) {
   );
 }
 
-function Header({ onEmail, onFanart }) {
+function Header({ onEmail }) {
   return (
     <header className="top-header">
       <div className="profile-shortcuts">
         <ExternalIconLink href="https://discord.gg/vefAzuUtqp" className="discord-theme" icon="fa-brands fa-discord" label="Discord" />
         <IconButton type="button" className="email-theme" title="Contact Email" aria-label="Contact Email" icon="fa-solid fa-envelope" onClick={onEmail} />
-        <IconButton type="button" className="fanart-theme" title="Fanart Gallery" aria-label="Fanart Gallery" icon="fa-solid fa-palette" onClick={onFanart} />
+        <a href="/fanart" className="switch-icon-btn fanart-theme" title="Fanart Gallery" aria-label="Fanart Gallery"><span className="icon-inner"><i className="fa-solid fa-palette" /></span></a>
       </div>
       <div className="top-domain">thesxber.com</div>
     </header>
@@ -191,103 +170,6 @@ function EmailModal({ onClose }) {
   );
 }
 
-function FanartModal({ onClose, onOpenLightbox }) {
-  const [entries, setEntries] = useState([]);
-
-  useEffect(() => {
-    let active = true;
-    fetch(apiUrl("/api/fanart"))
-      .then((response) => {
-        if (!response.ok) throw new Error("Fanart request failed");
-        return response.json();
-      })
-      .then((data) => { if (active) setEntries(data.items || staticFanart); })
-      .catch(() => { if (active) setEntries(staticFanart); });
-    return () => { active = false; };
-  }, []);
-
-  return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="fanart-title" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal-card modal-large">
-        <button className="close-modal" type="button" aria-label="Close" onClick={onClose}>&times;</button>
-        <h2 id="fanart-title"><i className="fa-solid fa-palette" /> Fanart Gallery</h2>
-        <div className="fanart-grid">
-          {entries.map((entry) => (
-            <FanartTile key={entry.filename} entry={entry} onOpenLightbox={onOpenLightbox} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Lightbox({ src, onClose }) {
-  if (!src) return null;
-  return (
-    <div className="lightbox" role="dialog" aria-modal="true" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <button className="close-lightbox" type="button" aria-label="Close" onClick={onClose}>&times;</button>
-      <img src={src} alt="Enlarged Fanart" />
-    </div>
-  );
-}
-
-function tooltipPositionFor(element) {
-  if (!element) return null;
-  const rect = element.getBoundingClientRect();
-  const maxCenterOffset = Math.min(140, Math.max(0, (window.innerWidth - 24) / 2));
-  const center = Math.min(Math.max(rect.left + rect.width / 2, maxCenterOffset), window.innerWidth - maxCenterOffset);
-  const placement = rect.top > 105 ? "above" : "below";
-  return {
-    left: center,
-    top: placement === "above" ? rect.top - 10 : rect.bottom + 10,
-    placement
-  };
-}
-
-function FanartTile({ entry, onOpenLightbox }) {
-  const tileRef = useRef(null);
-  const [tooltip, setTooltip] = useState(null);
-  const tooltipVisible = Boolean(tooltip);
-  const showTooltip = () => setTooltip(tooltipPositionFor(tileRef.current));
-  const hideTooltip = () => setTooltip(null);
-  const label = entry.title || `Fanart ${entry.id}`;
-  const hoverText = entry.hoverMarkdown?.trim() || label;
-
-  useEffect(() => {
-    if (!tooltipVisible) return undefined;
-    const update = () => setTooltip(tooltipPositionFor(tileRef.current));
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
-    };
-  }, [tooltipVisible]);
-
-  return (
-    <div className="fanart-tile" ref={tileRef}>
-      <button
-        className="fanart-tile-button"
-        type="button"
-        aria-label={label}
-        aria-describedby={tooltip ? `fanart-hover-${entry.id}` : undefined}
-        onClick={() => onOpenLightbox(assetUrl(entry.url))}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-        onFocus={showTooltip}
-        onBlur={hideTooltip}
-      >
-        <img src={assetUrl(entry.url)} alt={label} loading="lazy" />
-      </button>
-      {tooltip && (
-        <div id={`fanart-hover-${entry.id}`} className="fanart-hover-tag" data-placement={tooltip.placement} role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
-          <MarkdownText value={hoverText} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FanartAdminRow({ entry, onRemove, onSaved }) {
   const [title, setTitle] = useState(entry.title || "");
   const [hoverMarkdown, setHoverMarkdown] = useState(entry.hoverMarkdown || "");
@@ -326,7 +208,7 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
       <div className="admin-list-editor">
         <strong className="admin-list-filename">{entry.filename}</strong>
         <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
-        <label>Hover Markdown<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
+        <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
         <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
         {error && <p className="admin-row-error" role="alert">{error}</p>}
         <div className="admin-list-actions">
@@ -340,15 +222,11 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
 
 function Site() {
   const [emailOpen, setEmailOpen] = useState(false);
-  const [fanartOpen, setFanartOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState("");
 
   useEffect(() => {
     const closeOnEscape = (event) => {
       if (event.key !== "Escape") return;
       setEmailOpen(false);
-      setFanartOpen(false);
-      setLightboxSrc("");
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -356,12 +234,10 @@ function Site() {
 
   return (
     <div className="switch-screen">
-      <Header onEmail={() => setEmailOpen(true)} onFanart={() => setFanartOpen(true)} />
+      <Header onEmail={() => setEmailOpen(true)} />
       <MainCarousel />
       <BottomDock />
       {emailOpen && <EmailModal onClose={() => setEmailOpen(false)} />}
-      {fanartOpen && <FanartModal onClose={() => setFanartOpen(false)} onOpenLightbox={setLightboxSrc} />}
-      <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc("")} />
     </div>
   );
 }
@@ -530,7 +406,7 @@ function AdminPage() {
         <form className="admin-form" onSubmit={upload}>
           <label>Fanart image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
           <label>Optional title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
-          <label>Hover Markdown<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
+          <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
           <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
           <button className="admin-submit" type="submit">Upload fanart</button>
         </form>
@@ -562,5 +438,8 @@ function AdminPage() {
 }
 
 export default function App() {
-  return window.location.pathname.replace(/\/$/, "") === "/admin" ? <AdminPage /> : <Site />;
+  const route = window.location.pathname.replace(/\/$/, "");
+  if (route === "/admin") return <AdminPage />;
+  if (route === "/fanart") return <FanartPage />;
+  return <Site />;
 }

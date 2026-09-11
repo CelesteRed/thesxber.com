@@ -69,7 +69,6 @@ body { display: flex; justify-content: center; align-items: center; }
 
 .modal { display: flex; position: fixed; inset: 0; background: rgba(25, 45, 26, 0.75); justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(6px); padding: 15px; }
 .modal-card { background: #eef7ec; border: 3px solid #235227; color: #1a421d; width: 100%; max-width: 420px; padding: 24px; border-radius: 14px; position: relative; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
-.modal-large { max-width: 850px; height: 75vh; display: flex; flex-direction: column; }
 .close-modal { position: absolute; top: 12px; right: 16px; font-size: 24px; border: none; background: none; cursor: pointer; color: #235227; }
 .close-modal:hover { color: #0f2d12; }
 .modal-icon { font-size: 34px; color: #235227; margin-bottom: 8px; }
@@ -95,9 +94,6 @@ body { display: flex; justify-content: center; align-items: center; }
 .fanart-hover-tag code { padding: 1px 4px; border-radius: 4px; background: #b2e1af; font-size: 0.78rem; }
 @keyframes fanart-hover-tag-in { from { opacity: 0; transform: translate(-50%, calc(-100% + 6px)) scale(0.96); } to { opacity: 1; transform: translate(-50%, -100%) scale(1); } }
 @keyframes fanart-hover-tag-in-below { from { opacity: 0; transform: translate(-50%, -6px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
-.lightbox { display: flex; position: fixed; inset: 0; background: rgba(18, 38, 19, 0.92); justify-content: center; align-items: center; z-index: 200; }
-.lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; border: 4px solid #235227; }
-.close-lightbox { position: absolute; top: 20px; right: 25px; color: white; font-size: 36px; background: none; border: none; cursor: pointer; }
 
 /* Additive admin route; the public route above remains a pixel match for v1. */
 .admin-page { min-height: 100dvh; overflow-y: auto; padding: 32px 18px 48px; background: linear-gradient(180deg, #f4fbf3 0%, #dbeed8 45%, #b2e1af 100%); user-select: text; }

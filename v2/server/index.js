@@ -249,7 +249,7 @@ app.get("/fanart/:filename", async (request, response, next) => {
   }
 });
 
-app.get(/^\/admin\/?$/, (request, response) => {
+app.get(/^\/(admin|fanart)\/?$/, (request, response) => {
   const indexFile = path.join(distDir, "index.html");
   if (!fs.existsSync(indexFile)) return response.status(404).send("Build the v2 app with npm run build first.");
   response.sendFile(indexFile);

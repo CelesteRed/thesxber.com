@@ -36,6 +36,8 @@ All `/api` requests are rate-limited per resolved client IP. The defaults allow 
 
 ## Fanart updates
 
+The homepage palette icon opens the dedicated `/fanart` page. Clicking a thumbnail opens the full WebP image with its title and Markdown notes. Visitors can browse using previous/next buttons, Left/Right keys or touch swipes, and close with Escape, the close button or the backdrop. Admins edit the same notes used in both hover tags and the expanded viewer. See [FANART-PAGE.md](FANART-PAGE.md) for the reference and behavior details.
+
 The Discord app registers these commands in its direct messages:
 
 - `/fanart-upload file:<image> title:<optional> hover:<optional-markdown>` saves a new image in PostgreSQL.
