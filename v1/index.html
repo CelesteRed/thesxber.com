@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>thesxber.com</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <div class="switch-screen">
+    
+    <header class="top-header">
+      <div class="profile-shortcuts">
+        <a href="https://discord.gg/vefAzuUtqp" target="_blank" class="switch-icon-btn discord-theme" title="Discord">
+          <div class="icon-inner"><i class="fa-brands fa-discord"></i></div>
+        </a>
+        <button class="switch-icon-btn email-theme" id="openEmailBtn" title="Contact Email">
+          <div class="icon-inner"><i class="fa-solid fa-envelope"></i></div>
+        </button>
+        <button class="switch-icon-btn fanart-theme" id="openFanartBtn" title="Fanart Gallery">
+          <div class="icon-inner"><i class="fa-solid fa-palette"></i></div>
+        </button>
+      </div>
+
+      <div class="top-domain">thesxber.com</div>
+    </header>
+
+    <main class="main-carousel">
+      <button class="nav-arrow left-arrow" id="scrollLeftBtn" aria-label="Scroll Left">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+
+      <div class="cards-viewport" id="cardsViewport">
+        <div class="cards-track" id="tilesContainer">
+          <div class="loading-state">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <p>Loading Feed...</p>
+          </div>
+        </div>
+      </div>
+
+      <button class="nav-arrow right-arrow" id="scrollRightBtn" aria-label="Scroll Right">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </main>
+
+    <footer class="bottom-dock">
+      <div class="social-dock-bar">
+        <div class="dock-row">
+          <a href="https://youtube.com/@thesxber" target="_blank" class="switch-icon-btn dock-btn youtube-theme" data-label="YouTube">
+            <div class="icon-inner"><i class="fa-brands fa-youtube"></i></div>
+          </a>
+          <a href="https://www.tiktok.com/@thesxber" target="_blank" class="switch-icon-btn dock-btn tiktok-theme" data-label="TikTok">
+            <div class="icon-inner"><i class="fa-brands fa-tiktok"></i></div>
+          </a>
+          <a href="https://instagram.com/thesxber" target="_blank" class="switch-icon-btn dock-btn instagram-theme" data-label="Instagram">
+            <div class="icon-inner"><i class="fa-brands fa-instagram"></i></div>
+          </a>
+          <a href="https://x.com/thesxber" target="_blank" class="switch-icon-btn dock-btn x-theme" data-label="X (Twitter)">
+            <div class="icon-inner"><i class="fa-brands fa-x-twitter"></i></div>
+          </a>
+          <a href="https://facebook.com/thesxber" target="_blank" class="switch-icon-btn dock-btn facebook-theme" data-label="Facebook">
+            <div class="icon-inner"><i class="fa-brands fa-facebook-f"></i></div>
+          </a>
+          <a href="https://twitch.tv/thesxber" target="_blank" class="switch-icon-btn dock-btn twitch-theme" data-label="Twitch">
+            <div class="icon-inner"><i class="fa-brands fa-twitch"></i></div>
+          </a>
+        </div>
+      </div>
+
+      <div class="dock-label" id="dockLabel">YouTube</div>
+      <div class="switch-line"></div>
+    </footer>
+
+  </div>
+
+  <div class="modal" id="emailModal">
+    <div class="modal-card">
+      <button class="close-modal" id="closeEmailModal">&times;</button>
+      <i class="fa-solid fa-paper-plane modal-icon"></i>
+      <h2>Contact</h2>
+      <p class="email-display" id="emailAddress">thesxberbusiness@gmail.com</p>
+      <div class="modal-actions">
+        <button class="action-btn" id="copyEmailBtn"><i class="fa-solid fa-copy"></i> Copy Address</button>
+        <a href="mailto:thesxberbusiness@gmail.com" class="action-btn primary"><i class="fa-solid fa-envelope-open-text"></i> Send Mail</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fanartModal">
+    <div class="modal-card modal-large">
+      <button class="close-modal" id="closeFanartModal">&times;</button>
+      <h2><i class="fa-solid fa-palette"></i> Fanart Gallery</h2>
+      <div class="fanart-grid" id="fanartGrid"></div>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox">
+    <button class="close-lightbox" id="closeLightbox">&times;</button>
+    <img id="lightboxImg" src="" alt="Enlarged Fanart">
+  </div>
+
+  <audio id="nextPageAudio" preload="auto">
+    <source src="nextpageclick.mp3" type="audio/mpeg">
+    <source src="nextpageclick.wav" type="audio/wav">
+    <source src="nextpageclick.ogg" type="audio/ogg">
+  </audio>
+
+  <script src="script.js"></script>
+</body>
+</html>
