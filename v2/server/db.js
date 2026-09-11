@@ -84,6 +84,36 @@ export async function initializeDatabase() {
         configured BOOLEAN NOT NULL DEFAULT FALSE,
         error TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        session_hash TEXT PRIMARY KEY,
+        discord_user_id TEXT NOT NULL,
+        discord_username TEXT NOT NULL,
+        discord_display_name TEXT NOT NULL,
+        avatar_url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ip_address TEXT,
+        user_agent TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS admin_sessions_expires_idx ON admin_sessions (expires_at);
+
+      CREATE TABLE IF NOT EXISTS admin_activity (
+        id BIGSERIAL PRIMARY KEY,
+        discord_user_id TEXT NOT NULL,
+        discord_username TEXT NOT NULL,
+        action TEXT NOT NULL,
+        resource_type TEXT,
+        resource_id TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS admin_activity_created_idx ON admin_activity (created_at DESC, id DESC);
     `);
     databaseReady = true;
     return true;

@@ -238,28 +238,58 @@ function Site() {
   );
 }
 
+function formatActivityAction(action = "") {
+  return action.replace(/^auth\./, "").replace(/^fanart\./, "fanart ").replaceAll(".", " ");
+}
+
+function formatActivityTime(value) {
+  if (!value) return "—";
+  try { return new Date(value).toLocaleString(); } catch { return String(value); }
+}
+
 function AdminPage() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("sxber-admin-token") || "");
+  const [user, setUser] = useState(null);
   const [title, setTitle] = useState("");
   const [file, setFile] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
   const [message, setMessage] = useState("Checking admin access…");
 
   const loadEntries = useCallback(async () => {
-    try {
-      const response = await fetch(apiUrl("/api/fanart"));
-      const data = await response.json();
-      setEntries(data.items || []);
-      setMessage("");
-    } catch {
-      setMessage("The fanart API is unavailable.");
-    }
+    const response = await fetch(apiUrl("/api/fanart"), { credentials: "include" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The fanart API is unavailable.");
+    setEntries(data.items || []);
   }, []);
+
+  const loadActivity = useCallback(async () => {
+    const response = await fetch(apiUrl("/api/admin/activity?limit=100"), { credentials: "include" });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      setUser(null);
+      throw new Error("Your Discord login has expired. Sign in again.");
+    }
+    if (!response.ok) throw new Error(data.error || "The activity ledger is unavailable.");
+    setActivity(data.items || []);
+  }, []);
+
+  const loadDashboard = useCallback(async () => {
+    await Promise.all([loadEntries(), loadActivity()]);
+  }, [loadActivity, loadEntries]);
 
   useEffect(() => {
     let active = true;
-    fetch(apiUrl("/api/admin/access"))
+    const authStatus = new URLSearchParams(window.location.search).get("auth");
+    const callbackMessage = {
+      success: "Signed in with Discord.",
+      denied: "That Discord account is not on the allowed admin list.",
+      error: "Discord login could not be completed.",
+      unconfigured: "Discord login is not configured on the backend."
+    }[authStatus] || "";
+    if (authStatus) window.history.replaceState({}, document.title, window.location.pathname);
+
+    fetch(apiUrl("/api/auth/session"), { credentials: "include" })
       .then((response) => {
         if (response.status === 403) {
           window.location.replace("/");
@@ -271,40 +301,65 @@ function AdminPage() {
       .then((result) => {
         if (!active || !result) return;
         setAdminReady(true);
-        loadEntries();
+        setUser(result.user || null);
+        if (result.authenticated) {
+          loadDashboard().catch((error) => { if (active) setMessage(error.message); });
+          if (callbackMessage) setMessage(callbackMessage);
+        } else {
+          setMessage(callbackMessage || "Sign in with Discord to manage fanart and view the activity ledger.");
+        }
       })
       .catch((error) => {
         if (active) setMessage(error.message || "The admin access check failed.");
       });
     return () => { active = false; };
-  }, [loadEntries]);
+  }, [loadDashboard]);
+
+  const login = () => { window.location.assign(apiUrl("/api/auth/discord")); };
+
+  const logout = async () => {
+    setMessage("Signing out…");
+    try {
+      const response = await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to sign out.");
+      setUser(null);
+      setEntries([]);
+      setActivity([]);
+      setMessage("Signed out.");
+    } catch (error) { setMessage(error.message); }
+  };
 
   const upload = async (event) => {
     event.preventDefault();
-    if (!file || !token) { setMessage("Choose an image and enter the admin token."); return; }
+    if (!file) { setMessage("Choose an image to upload."); return; }
     const formData = new FormData();
     formData.append("file", file);
     if (title.trim()) formData.append("title", title.trim());
     setMessage("Uploading…");
     try {
-      const response = await fetch(apiUrl("/api/admin/fanart"), { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
-      const data = await response.json();
+      const response = await fetch(apiUrl("/api/admin/fanart"), { method: "POST", credentials: "include", body: formData });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { setUser(null); throw new Error("Your Discord login has expired. Sign in again."); }
       if (!response.ok) throw new Error(data.error || "Upload failed");
-      sessionStorage.setItem("sxber-admin-token", token);
       setFile(null);
       setTitle("");
       event.target.reset();
       setMessage(`Uploaded ${data.item.filename}.`);
-      loadEntries();
+      await loadDashboard();
     } catch (error) { setMessage(error.message); }
   };
 
   const remove = async (filename) => {
-    if (!token) { setMessage("Enter the admin token first."); return; }
-    const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(filename)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-    const data = await response.json();
-    setMessage(response.ok ? `Removed ${filename}.` : (data.error || "Remove failed"));
-    if (response.ok) loadEntries();
+    setMessage(`Removing ${filename}…`);
+    try {
+      const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(filename)}`, { method: "DELETE", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { setUser(null); throw new Error("Your Discord login has expired. Sign in again."); }
+      if (!response.ok) throw new Error(data.error || "Remove failed");
+      setMessage(`Removed ${filename}.`);
+      await loadDashboard();
+    } catch (error) { setMessage(error.message); }
   };
 
   if (!adminReady) {
@@ -315,15 +370,37 @@ function AdminPage() {
     );
   }
 
+  if (!user) {
+    return (
+      <main className="admin-page">
+        <section className="admin-card admin-login-card">
+          <a className="admin-back" href="/">← Back to thesxber.com</a>
+          <p className="admin-eyebrow">thesxber.com / v2</p>
+          <i className="fa-brands fa-discord admin-login-icon" aria-hidden="true" />
+          <h1>Admin sign in</h1>
+          <p className="admin-copy">Use your Discord account to access fanart tools. Only Discord IDs listed in the private allowlist can continue.</p>
+          <button className="admin-discord" type="button" onClick={login}><i className="fa-brands fa-discord" /> Continue with Discord</button>
+          <p className="admin-message" aria-live="polite">{message}</p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="admin-page">
       <section className="admin-card">
-        <a className="admin-back" href="/">← Back to thesxber.com</a>
+        <div className="admin-toolbar">
+          <a className="admin-back" href="/">← Back to thesxber.com</a>
+          <button className="admin-logout" type="button" onClick={logout}>Sign out</button>
+        </div>
+        <div className="admin-user">
+          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <i className="fa-brands fa-discord" aria-hidden="true" />}
+          <div><strong>{user.displayName || user.username}</strong><span>@{user.username}</span></div>
+        </div>
         <p className="admin-eyebrow">thesxber.com / v2</p>
         <h1>Fanart admin</h1>
-        <p className="admin-copy">Uploads can be made here with the server admin token or directly with the restricted Discord <code>/fanart-upload</code> command.</p>
+        <p className="admin-copy">You are signed in with Discord. Uploads and removals are recorded in the activity ledger, and the restricted <code>/fanart-upload</code> command uses the same audit trail.</p>
         <form className="admin-form" onSubmit={upload}>
-          <label>Admin token<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="current-password" /></label>
           <label>Fanart image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
           <label>Optional title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
           <button className="admin-submit" type="submit">Upload fanart</button>
@@ -338,6 +415,17 @@ function AdminPage() {
             </div>
           ))}
         </div>
+        <section className="admin-ledger" aria-labelledby="activity-title">
+          <div className="admin-ledger-heading"><h2 id="activity-title">Activity ledger</h2><button type="button" onClick={() => loadDashboard().catch((error) => setMessage(error.message))}>Refresh</button></div>
+          {activity.length ? (
+            <div className="admin-ledger-scroll">
+              <table className="admin-ledger-table">
+                <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>IP</th></tr></thead>
+                <tbody>{activity.map((entry) => <tr key={entry.id}><td>{formatActivityTime(entry.createdAt)}</td><td><span className="admin-ledger-user">{entry.discordUsername}<small>{entry.discordUserId}</small></span></td><td>{formatActivityAction(entry.action)}</td><td>{entry.resourceId || "—"}</td><td>{entry.ipAddress || "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          ) : <p className="admin-empty">No activity has been recorded yet.</p>}
+        </section>
       </section>
     </main>
   );

@@ -27,10 +27,11 @@ function authorized(interaction) {
   return allowedUserIds.has(interaction.user.id);
 }
 
-function internalHeaders() {
+function internalHeaders(interaction) {
   const headers = {};
   if (process.env.INTERNAL_API_TOKEN) headers["x-internal-api-key"] = process.env.INTERNAL_API_TOKEN;
-  if (process.env.ADMIN_API_TOKEN) headers.Authorization = `Bearer ${process.env.ADMIN_API_TOKEN}`;
+  if (interaction?.user?.id) headers["x-discord-user-id"] = interaction.user.id;
+  if (interaction?.user?.username) headers["x-discord-username"] = interaction.user.username;
   return headers;
 }
 
@@ -55,8 +56,8 @@ export async function startDiscordBot() {
     console.info("Discord bot disabled: DISCORD_BOT_TOKEN is not set.");
     return null;
   }
-  if (!process.env.INTERNAL_API_TOKEN && !process.env.ADMIN_API_TOKEN) {
-    console.warn("Discord bot has no INTERNAL_API_TOKEN or ADMIN_API_TOKEN; fanart actions will be rejected by the API.");
+  if (!process.env.INTERNAL_API_TOKEN) {
+    console.warn("Discord bot has no INTERNAL_API_TOKEN; fanart actions will be rejected by the API.");
   }
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -78,7 +79,7 @@ export async function startDiscordBot() {
 
     try {
       if (interaction.commandName === "fanart-list") {
-        const { items: entries } = await apiJson("/api/fanart");
+        const { items: entries } = await apiJson("/api/fanart", { headers: internalHeaders(interaction) });
         const body = entries.length
           ? entries.slice(-20).map((entry) => `${entry.filename}${entry.title ? ` — ${entry.title}` : ""}`).join("\n").slice(0, 1900)
           : "No fanart has been uploaded yet.";
@@ -88,7 +89,7 @@ export async function startDiscordBot() {
 
       if (interaction.commandName === "fanart-remove") {
         const filename = interaction.options.getString("filename", true);
-        await apiJson(`/api/admin/fanart/${encodeURIComponent(filename)}`, { method: "DELETE", headers: internalHeaders() });
+        await apiJson(`/api/admin/fanart/${encodeURIComponent(filename)}`, { method: "DELETE", headers: internalHeaders(interaction) });
         await interaction.reply({ content: `Removed ${filename} from the gallery.`, ephemeral: true });
         return;
       }
@@ -112,7 +113,7 @@ export async function startDiscordBot() {
         form.append("file", new Blob([buffer], { type: attachment.contentType || "application/octet-stream" }), attachment.name || `upload${extension}`);
         const title = interaction.options.getString("title");
         if (title) form.append("title", title);
-        const { item: entry } = await apiJson("/api/admin/fanart", { method: "POST", headers: internalHeaders(), body: form });
+        const { item: entry } = await apiJson("/api/admin/fanart", { method: "POST", headers: internalHeaders(interaction), body: form });
         await interaction.editReply(`Published ${entry.filename}. It is now live in the fanart gallery.`);
       }
     } catch (error) {

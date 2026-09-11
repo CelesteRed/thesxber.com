@@ -6,6 +6,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import multer from "multer";
+import {
+  completeDiscordLogin,
+  destroyAdminSession,
+  getAdminSession,
+  internalActorFromRequest,
+  listAdminActivity,
+  logLogout,
+  recordAdminActivity,
+  startDiscordLogin
+} from "./auth.js";
 import { closeDatabase, initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
 import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk } from "./fanart.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
@@ -36,7 +46,7 @@ const allowedAdminIps = new Set(
 
 const configuredOrigins = (process.env.CORS_ORIGIN || "").split(",").map((origin) => origin.trim()).filter(Boolean);
 const corsOptions = configuredOrigins.length
-  ? { origin: (origin, callback) => callback(null, !origin || configuredOrigins.includes(origin)) }
+  ? { credentials: true, origin: (origin, callback) => callback(null, !origin || configuredOrigins.includes(origin)) }
   : undefined;
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
@@ -59,11 +69,6 @@ function tokenMatches(expected, provided) {
   return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
-function adminTokenMatches(request) {
-  const provided = (request.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  return tokenMatches(process.env.ADMIN_API_TOKEN || "", provided);
-}
-
 function internalTokenMatches(request) {
   return tokenMatches(process.env.INTERNAL_API_TOKEN || "", request.get("x-internal-api-key") || "");
 }
@@ -78,11 +83,24 @@ function requireAdminPageIp(request, response, next) {
   next();
 }
 
-function requireAdmin(request, response, next) {
+async function requireAdmin(request, response, next) {
   const internal = internalTokenMatches(request);
-  if (!internal && !adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
-  if (!internal && !adminTokenMatches(request)) return response.status(401).json({ error: "Invalid admin token" });
-  next();
+  if (internal) {
+    request.adminUser = internalActorFromRequest(request);
+    request.adminAuthType = "internal";
+    return next();
+  }
+  if (!adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
+  try {
+    const session = await getAdminSession(request);
+    if (!session) return response.status(401).json({ error: "Discord login required" });
+    request.adminUser = session;
+    request.adminAuthType = "discord";
+    return next();
+  } catch (error) {
+    console.error("Admin session lookup failed:", error.message);
+    return response.status(503).json({ error: "Admin authentication is temporarily unavailable" });
+  }
 }
 
 const upload = multer({
@@ -97,7 +115,50 @@ app.get("/api/health", (request, response) => response.json({
   database: isDatabaseReady() ? "ready" : (isDatabaseConfigured() ? "starting" : "filesystem-fallback")
 }));
 
-app.get("/api/admin/access", requireAdminIp, (request, response) => response.json({ ok: true }));
+async function sendAuthSession(request, response) {
+  try {
+    response.set("Cache-Control", "no-store");
+    const user = await getAdminSession(request);
+    response.json({ ok: true, authenticated: Boolean(user), user: user || null });
+  } catch (error) {
+    console.error("Admin session lookup failed:", error.message);
+    response.status(503).json({ error: "Admin authentication is temporarily unavailable" });
+  }
+}
+
+app.get("/api/auth/session", requireAdminIp, sendAuthSession);
+app.get("/api/admin/access", requireAdminIp, sendAuthSession);
+
+app.get("/api/auth/discord", requireAdminIp, (request, response) => {
+  try {
+    response.redirect(302, startDiscordLogin(request, response));
+  } catch (error) {
+    console.error("Discord OAuth configuration error:", error.message);
+    response.redirect(302, "/admin?auth=unconfigured");
+  }
+});
+
+app.get("/api/auth/discord/callback", requireAdminPageIp, async (request, response) => {
+  try {
+    const result = await completeDiscordLogin(request, response);
+    response.redirect(302, result.allowed ? "/admin?auth=success" : "/admin?auth=denied");
+  } catch (error) {
+    console.error("Discord OAuth callback failed:", error.message);
+    response.redirect(302, "/admin?auth=error");
+  }
+});
+
+app.post("/api/auth/logout", requireAdminIp, async (request, response) => {
+  try {
+    const user = await getAdminSession(request);
+    if (user) await logLogout(request, user);
+    await destroyAdminSession(request, response);
+    response.json({ ok: true });
+  } catch (error) {
+    console.error("Admin logout failed:", error.message);
+    response.status(503).json({ error: "Unable to sign out right now" });
+  }
+});
 
 app.get("/api/youtube", async (request, response) => {
   try {
@@ -124,6 +185,12 @@ app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (reques
       extension: extensionFromUpload(request.file),
       title: request.body.title || ""
     });
+    await recordAdminActivity(request, {
+      action: "fanart.upload",
+      resourceType: "fanart",
+      resourceId: item.filename,
+      metadata: { title: item.title, mimeType: request.file.mimetype, sizeBytes: request.file.size }
+    });
     response.status(201).json({ item });
   } catch (error) {
     response.status(400).json({ error: error.message || "Unable to save fanart" });
@@ -133,9 +200,24 @@ app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (reques
 app.delete("/api/admin/fanart/:filename", requireAdmin, async (request, response) => {
   try {
     await removeFanart(request.params.filename);
+    await recordAdminActivity(request, {
+      action: "fanart.delete",
+      resourceType: "fanart",
+      resourceId: request.params.filename
+    });
     response.json({ ok: true });
   } catch (error) {
     response.status(404).json({ error: error.message || "Fanart not found" });
+  }
+});
+
+app.get("/api/admin/activity", requireAdmin, async (request, response) => {
+  try {
+    response.set("Cache-Control", "no-store");
+    response.json({ items: await listAdminActivity(request.query.limit) });
+  } catch (error) {
+    console.error("Activity ledger read failed:", error.message);
+    response.status(500).json({ error: "Unable to load the activity ledger" });
   }
 });
 

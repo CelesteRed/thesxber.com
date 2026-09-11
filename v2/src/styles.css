@@ -89,10 +89,22 @@ body { display: flex; justify-content: center; align-items: center; }
 .admin-page { min-height: 100dvh; overflow-y: auto; padding: 32px 18px 48px; background: linear-gradient(180deg, #f4fbf3 0%, #dbeed8 45%, #b2e1af 100%); user-select: text; }
 .admin-card { width: min(760px, 100%); margin: 0 auto; padding: clamp(22px, 5vw, 42px); background: rgba(238, 247, 236, 0.92); border: 3px solid #235227; border-radius: 14px; box-shadow: 0 10px 30px rgba(35, 82, 39, 0.2); }
 .admin-card * { user-select: text; }
+.admin-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .admin-back { color: #235227; font-weight: 700; text-decoration: none; }
+.admin-logout, .admin-ledger-heading button { border: 2px solid #235227; border-radius: 6px; padding: 7px 11px; background: transparent; color: #235227; font-weight: 700; cursor: pointer; }
+.admin-logout:hover, .admin-ledger-heading button:hover { background: #235227; color: #ffffff; }
+.admin-user { display: flex; align-items: center; gap: 10px; margin-top: 26px; color: #1a421d; }
+.admin-user img, .admin-user > i { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; object-fit: cover; background: #d6ecd3; border: 2px solid #235227; font-size: 20px; }
+.admin-user div { display: grid; gap: 2px; }
+.admin-user span { font-size: 12px; opacity: 0.75; }
 .admin-eyebrow { margin-top: 34px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
 .admin-card h1 { margin-top: 5px; font-size: clamp(30px, 6vw, 48px); }
 .admin-copy { max-width: 62ch; margin-top: 10px; line-height: 1.55; }
+.admin-login-card { max-width: 520px; text-align: center; }
+.admin-login-card .admin-back { display: block; text-align: left; }
+.admin-login-icon { margin-top: 52px; font-size: 42px; color: #5865f2; }
+.admin-discord { margin-top: 22px; padding: 12px 18px; border: 2px solid #4d59d8; border-radius: 7px; background: #5865f2; color: #ffffff; font-weight: 800; cursor: pointer; box-shadow: 0 5px 12px rgba(88, 101, 242, 0.25); }
+.admin-discord:hover { background: #4752c4; border-color: #3c45a5; transform: translateY(-1px); }
 .admin-form { display: grid; gap: 14px; margin-top: 24px; }
 .admin-form label { display: grid; gap: 6px; font-weight: 700; }
 .admin-form input { width: 100%; padding: 10px 12px; border: 2px solid #235227; border-radius: 6px; background: #fff; color: #1a421d; }
@@ -102,6 +114,17 @@ body { display: flex; justify-content: center; align-items: center; }
 .admin-list-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid rgba(35, 82, 39, 0.35); border-radius: 6px; }
 .admin-list-row img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; }
 .admin-list-row button { padding: 6px 9px; font-size: 12px; }
+.admin-ledger { margin-top: 32px; padding-top: 24px; border-top: 2px solid rgba(35, 82, 39, 0.2); }
+.admin-ledger-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-ledger-heading h2 { font-size: 21px; }
+.admin-ledger-scroll { margin-top: 12px; overflow-x: auto; border: 1px solid rgba(35, 82, 39, 0.28); border-radius: 7px; background: rgba(255, 255, 255, 0.45); }
+.admin-ledger-table { width: 100%; min-width: 600px; border-collapse: collapse; font-size: 12px; }
+.admin-ledger-table th, .admin-ledger-table td { padding: 9px 10px; border-bottom: 1px solid rgba(35, 82, 39, 0.16); text-align: left; white-space: nowrap; }
+.admin-ledger-table th { background: rgba(35, 82, 39, 0.1); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.admin-ledger-table tr:last-child td { border-bottom: none; }
+.admin-ledger-user { display: grid; gap: 2px; }
+.admin-ledger-user small { font-size: 10px; opacity: 0.65; }
+.admin-empty { margin-top: 12px; opacity: 0.75; }
 
 @media (max-width: 768px) {
   .switch-screen { padding: 12px 12px 8px 12px; }
