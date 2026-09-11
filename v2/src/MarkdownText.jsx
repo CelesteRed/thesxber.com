@@ -18,4 +18,3 @@ function markdownToHtml(value) {
 export default function MarkdownText({ value }) {
   return <span className="markdown-text" dangerouslySetInnerHTML={{ __html: markdownToHtml(value) }} />;
 }
-
