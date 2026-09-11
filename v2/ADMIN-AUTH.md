@@ -9,7 +9,7 @@ This document explains the v2 admin access flow and the audit trail used for pro
 3. Discord sends the browser back to `DISCORD_OAUTH_REDIRECT_URI` after the user authorizes the `identify` scope.
 4. The backend fetches the Discord profile, compares the Discord user ID with `DISCORD_ALLOWED_USER_IDS`, and records the result.
 5. An approved user receives an HttpOnly server session cookie. The database stores only a hash of that session token.
-6. Protected admin API calls use that session. The Discord bot can use the internal API token and Discord identity headers for approved automation calls.
+6. Protected admin API calls use that session. The user-installed Discord app can use the internal API token and Discord identity headers for approved automation calls from its direct messages.
 
 The frontend never talks directly to Postgres, Discord's client secret, or the internal API token. The backend is the only service that reads and writes the database and serves cached content to browsers.
 
@@ -29,6 +29,8 @@ https://admin.example.invalid/api/auth/discord/callback
 ```
 
 The callback URL must match exactly, including the scheme, hostname, port, and path. The application uses Discord's authorization-code flow with the `identify` scope. Keep the client secret private and configure it only through the environment.
+
+On the application's **Installation** page, enable **User Install**, add the `applications.commands` scope to the user install settings, and leave **Guild Install** disabled. The fanart commands are registered globally for the `USER_INSTALL` integration type and `BOT_DM` interaction context, so the app is used from its direct messages without being added to a server.
 
 ## Environment configuration
 
@@ -81,7 +83,7 @@ fanart.upload
 fanart.delete
 ```
 
-Uploads and deletes from the Discord bot include the invoking Discord identity from the internal request headers. This keeps automated changes attributable to the person who issued the bot command. The admin page exposes a read-only activity view for authorized users.
+Uploads and deletes from the user-installed Discord app include the invoking Discord identity from the internal request headers. This keeps automated changes attributable to the person who issued the command in the app's direct messages. The admin page exposes a read-only activity view for authorized users.
 
 ## API surface
 

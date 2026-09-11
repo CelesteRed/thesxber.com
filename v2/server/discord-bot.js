@@ -2,7 +2,15 @@ import "dotenv/config";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import dotenv from "dotenv";
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  Client,
+  GatewayIntentBits,
+  InteractionContextType,
+  REST,
+  Routes,
+  SlashCommandBuilder
+} from "discord.js";
 import { extensionFromUpload } from "./fanart.js";
 
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".env") });
@@ -21,7 +29,10 @@ const commands = [
     .setName("fanart-remove")
     .setDescription("Remove published fanart")
     .addStringOption((option) => option.setName("filename").setDescription("Filename, for example fanart50.png").setRequired(true))
-].map((command) => command.toJSON());
+].map((command) => command
+  .setIntegrationTypes(ApplicationIntegrationType.UserInstall)
+  .setContexts(InteractionContextType.BotDM)
+  .toJSON());
 
 function authorized(interaction) {
   return allowedUserIds.has(interaction.user.id);
@@ -45,26 +56,23 @@ async function apiJson(pathname, options = {}) {
 async function registerCommands(client) {
   const applicationId = process.env.DISCORD_APPLICATION_ID || client.user.id;
   const rest = new REST({ version: "10" }).setToken(token);
-  const route = process.env.DISCORD_GUILD_ID
-    ? Routes.applicationGuildCommands(applicationId, process.env.DISCORD_GUILD_ID)
-    : Routes.applicationCommands(applicationId);
-  await rest.put(route, { body: commands });
+  await rest.put(Routes.applicationCommands(applicationId), { body: commands });
 }
 
 export async function startDiscordBot() {
   if (!token) {
-    console.info("Discord bot disabled: DISCORD_BOT_TOKEN is not set.");
+    console.info("Discord DM app disabled: DISCORD_BOT_TOKEN is not set.");
     return null;
   }
   if (!process.env.INTERNAL_API_TOKEN) {
-    console.warn("Discord bot has no INTERNAL_API_TOKEN; fanart actions will be rejected by the API.");
+    console.warn("Discord DM app has no INTERNAL_API_TOKEN; fanart actions will be rejected by the API.");
   }
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   client.once("ready", async () => {
     try {
       await registerCommands(client);
-      console.info(`Discord bot ready as ${client.user.tag}. Fanart commands registered.`);
+      console.info(`Discord DM app ready as ${client.user.tag}. Fanart commands registered for user installs.`);
     } catch (error) {
       console.error("Discord command registration failed:", error.message);
     }
@@ -72,8 +80,12 @@ export async function startDiscordBot() {
 
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
+    if (interaction.context !== InteractionContextType.BotDM) {
+      await interaction.reply({ content: "This app only accepts fanart commands in its direct messages." });
+      return;
+    }
     if (!authorized(interaction)) {
-      await interaction.reply({ content: "You are not authorized to manage fanart.", ephemeral: true });
+      await interaction.reply({ content: "You are not authorized to manage fanart." });
       return;
     }
 
@@ -83,14 +95,14 @@ export async function startDiscordBot() {
         const body = entries.length
           ? entries.slice(-20).map((entry) => `${entry.filename}${entry.title ? ` — ${entry.title}` : ""}`).join("\n").slice(0, 1900)
           : "No fanart has been uploaded yet.";
-        await interaction.reply({ content: body, ephemeral: true });
+        await interaction.reply({ content: body });
         return;
       }
 
       if (interaction.commandName === "fanart-remove") {
         const filename = interaction.options.getString("filename", true);
         await apiJson(`/api/admin/fanart/${encodeURIComponent(filename)}`, { method: "DELETE", headers: internalHeaders(interaction) });
-        await interaction.reply({ content: `Removed ${filename} from the gallery.`, ephemeral: true });
+        await interaction.reply({ content: `Removed ${filename} from the gallery.` });
         return;
       }
 
@@ -98,14 +110,14 @@ export async function startDiscordBot() {
         const attachment = interaction.options.getAttachment("file", true);
         const extension = extensionFromUpload({ originalname: attachment.name, mimetype: attachment.contentType });
         if (!extension) {
-          await interaction.reply({ content: "Please upload a JPG, PNG, WEBP, or GIF image.", ephemeral: true });
+          await interaction.reply({ content: "Please upload a JPG, PNG, WEBP, or GIF image." });
           return;
         }
         if (attachment.size > 15 * 1024 * 1024) {
-          await interaction.reply({ content: "That image is larger than the 15 MB limit.", ephemeral: true });
+          await interaction.reply({ content: "That image is larger than the 15 MB limit." });
           return;
         }
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply();
         const response = await fetch(attachment.url);
         if (!response.ok) throw new Error("Discord attachment could not be downloaded");
         const buffer = Buffer.from(await response.arrayBuffer());
@@ -119,7 +131,7 @@ export async function startDiscordBot() {
     } catch (error) {
       const message = error.message || "Fanart action failed";
       if (interaction.deferred || interaction.replied) await interaction.editReply(`Unable to complete that action: ${message}`);
-      else await interaction.reply({ content: `Unable to complete that action: ${message}`, ephemeral: true });
+      else await interaction.reply({ content: `Unable to complete that action: ${message}` });
     }
   });
 
@@ -129,7 +141,7 @@ export async function startDiscordBot() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startDiscordBot().catch((error) => {
-    console.error("Discord bot failed to start:", error);
+    console.error("Discord DM app failed to start:", error);
     process.exitCode = 1;
   });
 }

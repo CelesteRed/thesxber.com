@@ -1,6 +1,6 @@
 # thesxber.com v2
 
-This is the React version of the original `v1` site. The public route keeps the same green full-screen layout, carousel behavior, social dock, contact modal, fanart gallery, lightbox, and click sound. The code uses plain JSX, JavaScript, and CSS without a component library. A single Node service serves the frontend and REST API; PostgreSQL stores fanart binaries and the cached YouTube rows.
+This is the React version of the original `v1` site. The public route keeps the same green full-screen layout, carousel behavior, social dock, contact modal, fanart gallery, lightbox, and click sound. The code uses plain JSX, JavaScript, and CSS without a component library. A single Node service serves the frontend and REST API; PostgreSQL stores fanart binaries and the cached YouTube rows. The Discord integration is a user-installed app whose slash commands run in its direct messages.
 
 ## Local setup
 
@@ -32,13 +32,15 @@ The REST surface is intentionally small: `GET /api/health`, `GET /api/youtube`, 
 
 ## Fanart updates
 
-The Discord bot registers these commands:
+The Discord app registers these commands in its direct messages:
 
 - `/fanart-upload file:<image> title:<optional>` saves a new image in PostgreSQL.
 - `/fanart-list` lists published files.
 - `/fanart-remove filename:<fanartN.ext>` removes a file.
 
-Every command checks `DISCORD_ALLOWED_USER_IDS` before doing anything. The bot accepts JPG, PNG, WEBP, and GIF files up to 15 MB. It calls the backend with `INTERNAL_API_TOKEN`, and upload/removal actions are written to the activity ledger with the invoking Discord user ID.
+Every command checks `DISCORD_ALLOWED_USER_IDS` before doing anything. The app accepts JPG, PNG, WEBP, and GIF files up to 15 MB. It calls the backend with `INTERNAL_API_TOKEN`, and upload/removal actions are written to the activity ledger with the invoking Discord user ID.
+
+On the Discord Developer Portal's **Installation** page, enable **User Install**, add the `applications.commands` scope to the user install settings, and leave **Guild Install** disabled. The backend registers global slash commands with the `USER_INSTALL` integration type and `BOT_DM` interaction context, so no guild ID or server invite is required. Install the app to your own Discord account, open its DM, and use `/fanart-upload`, `/fanart-list`, or `/fanart-remove`.
 
 The browser panel is available at `http://localhost:5173/admin` during Vite development or at the Compose app URL in production. It redirects to Discord OAuth2, then creates an HTTP-only server session only when the returned Discord user ID appears in `DISCORD_ALLOWED_USER_IDS`; there is no IP allowlist gate. The panel shows recent activity, including the Discord account, action, target, timestamp, and source IP. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and the exact registered `DISCORD_OAUTH_REDIRECT_URI` in the private `.env`; use the Vite URL when running the separate dev server and the public app URL for Compose. Set `AUTH_COOKIE_SECURE=true` when the app is served over HTTPS. If a trusted reverse proxy sits in front of Node, set `TRUST_PROXY=true` so the activity ledger records the forwarded client IP; only enable that when the proxy is controlled by you.
 

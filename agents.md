@@ -3,7 +3,7 @@
 This repository contains two versions of thesxber.com:
 
 - `v1/` is the original static HTML, CSS, and JavaScript site kept as a visual and behavior reference.
-- `v2/` is the upgraded React/Vite frontend and Node/Express backend. The backend serves the built site, exposes the REST API, stores fanart and cached YouTube data in PostgreSQL, and runs the restricted Discord fanart bot.
+- `v2/` is the upgraded React/Vite frontend and Node/Express backend. The backend serves the built site, exposes the REST API, stores fanart and cached YouTube data in PostgreSQL, and runs the restricted user-installed Discord fanart app in direct messages.
 - `infra/` contains public documentation only. Host deployment scripts, reverse-proxy manifests, firewall helpers, and other operational command files stay local and are ignored by the root `.gitignore`.
 
 ## v2 runtime
@@ -19,6 +19,6 @@ The Compose stack contains one app container and one PostgreSQL container. The a
 
 ## Access and secrets
 
-Copy `v2/.env.example` to a private `v2/.env` and replace its placeholders. Never commit `.env`, API keys, bot tokens, database passwords, private keys, certificates, or host-specific deployment files. Configure the Discord application's OAuth redirect URI to match `DISCORD_OAUTH_REDIRECT_URI`. The `/admin` page is publicly reachable; admin upload/delete/activity actions require a Discord OAuth session for an ID in `DISCORD_ALLOWED_USER_IDS` (or the trusted internal API token for the bot). Every login, upload, removal, and logout is recorded in the database activity ledger, including source IP metadata. Discord commands are limited to `DISCORD_ALLOWED_USER_IDS` and call the backend with the internal API token.
+Copy `v2/.env.example` to a private `v2/.env` and replace its placeholders. Never commit `.env`, API keys, bot tokens, database passwords, private keys, certificates, or host-specific deployment files. Configure the Discord application's OAuth redirect URI to match `DISCORD_OAUTH_REDIRECT_URI`. The `/admin` page is publicly reachable; admin upload/delete/activity actions require a Discord OAuth session for an ID in `DISCORD_ALLOWED_USER_IDS` (or the trusted internal API token for the bot). Every login, upload, removal, and logout is recorded in the database activity ledger, including source IP metadata. The Discord app is user-installed, accepts slash commands only in its direct messages, limits them to `DISCORD_ALLOWED_USER_IDS`, and calls the backend with the internal API token.
 
 Keep changes to the public site in `v2/src/`, backend behavior in `v2/server/`, and container configuration in `v2/Dockerfile` and `v2/docker-compose.yml`. Preserve the v1 files when making visual comparisons.
