@@ -109,12 +109,15 @@ Protected admin endpoints use the Discord session cookie or a trusted internal r
 
 ```text
 GET    /api/admin/activity
+GET    /api/admin/fanart
 POST   /api/admin/fanart
 PATCH  /api/admin/fanart/:filename
 DELETE /api/admin/fanart/:filename
 ```
 
 The admin fanart list lets an authorized user edit each entry's title and hover Markdown. Hover tags support `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `__underline__`, and line breaks; the renderer escapes HTML before applying those formatting rules.
+
+Each entry also has **Include in hourly embed rotation**, persisted by **Save changes**. The protected listing includes `embedEligible`; the public listing omits it. `PATCH /api/admin/fanart/:filename` accepts a boolean `embedEligible` and records changes in the activity ledger. Newly uploaded images default to false. `/artoftheday.webp` serves only eligible images as 1200 × 300 crops, rotating hourly. No eligible images means HTTP 404. Crops are stored separately from originals; Discord may retain its own cached previews after an image changes.
 
 ## Fanart image variants
 

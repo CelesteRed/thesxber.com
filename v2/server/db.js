@@ -73,6 +73,8 @@ export async function initializeDatabase() {
 
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS hover_markdown TEXT NOT NULL DEFAULT '';
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS webp_data BYTEA;
+      ALTER TABLE fanart ADD COLUMN IF NOT EXISTS embed_eligible BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE fanart ADD COLUMN IF NOT EXISTS embed_data BYTEA;
 
       CREATE TABLE IF NOT EXISTS youtube_videos (
         video_id TEXT PRIMARY KEY,

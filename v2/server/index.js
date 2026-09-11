@@ -21,6 +21,7 @@ import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, remov
 import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
+import { getArtworkOfTheHour, HOUR_MS } from "./embed-art.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -165,6 +166,28 @@ app.get("/api/fanart", async (request, response) => {
   }
 });
 
+app.get("/api/admin/fanart", requireAdmin, async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    response.json({ items: await getFanartEntries({ includePrivate: true }) });
+  } catch (error) {
+    console.error("Admin fanart listing error:", error.message);
+    response.status(503).json({ error: "Unable to load fanart settings" });
+  }
+});
+
+app.get(["/artoftheday.webp", "/api/artoftheday.webp"], async (request, response) => {
+  response.set("Cache-Control", "no-cache, must-revalidate");
+  try {
+    const image = await getArtworkOfTheHour();
+    if (!image) return response.status(404).send("No artwork is selected for embeds");
+    response.type("image/webp").send(image.buffer);
+  } catch (error) {
+    console.error("Embed image error:", error.message);
+    response.status(503).send("Embed image temporarily unavailable");
+  }
+});
+
 app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (request, response) => {
   if (!request.file) return response.status(400).json({ error: "Upload an image file" });
   try {
@@ -189,7 +212,8 @@ app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response)
   try {
     const item = await updateFanartMetadata(request.params.filename, {
       title: request.body?.title,
-      hoverMarkdown: request.body?.hoverMarkdown
+      hoverMarkdown: request.body?.hoverMarkdown,
+      embedEligible: request.body?.embedEligible
     });
     await recordAdminActivity(request, {
       action: "fanart.update",
@@ -198,8 +222,10 @@ app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response)
       metadata: {
         fields: [
           request.body?.title !== undefined ? "title" : null,
-          request.body?.hoverMarkdown !== undefined ? "hoverMarkdown" : null
-        ].filter(Boolean)
+          request.body?.hoverMarkdown !== undefined ? "hoverMarkdown" : null,
+          request.body?.embedEligible !== undefined ? "embedEligible" : null
+        ].filter(Boolean),
+        ...(request.body?.embedEligible !== undefined ? { embedEligible: item.embedEligible } : {})
       }
     });
     response.json({ item });
@@ -269,7 +295,8 @@ function sendSitePage(request, response) {
   const pagePath = request.path === "/index.html" ? "/" : request.path;
   const html = fs.readFileSync(indexFile, "utf8")
     .replaceAll("__SITE_ORIGIN__", escapeHtmlAttribute(origin))
-    .replaceAll("__PAGE_URL__", escapeHtmlAttribute(`${origin}${pagePath}`));
+    .replaceAll("__PAGE_URL__", escapeHtmlAttribute(`${origin}${pagePath}`))
+    .replaceAll("__EMBED_HOUR__", String(Math.floor(Date.now() / HOUR_MS)));
   response.set("Cache-Control", "no-cache");
   response.type("html").send(html);
 }

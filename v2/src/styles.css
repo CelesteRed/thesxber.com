@@ -125,6 +125,8 @@ body { display: flex; justify-content: center; align-items: center; }
 .admin-list-editor label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; }
 .admin-list-editor input, .admin-list-editor textarea { width: 100%; padding: 8px 10px; border: 2px solid #235227; border-radius: 6px; background: #fff; color: #1a421d; font: inherit; }
 .admin-list-editor textarea { min-height: 62px; resize: vertical; }
+.admin-list-editor .admin-embed-toggle { display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+.admin-list-editor .admin-embed-toggle input { width: 18px; height: 18px; flex: 0 0 18px; accent-color: #235227; cursor: pointer; }
 .admin-list-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-list-actions button { padding: 7px 10px; font-size: 12px; }
 .admin-list-actions button:disabled { cursor: wait; opacity: 0.6; }

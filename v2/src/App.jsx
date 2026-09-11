@@ -173,13 +173,15 @@ function EmailModal({ onClose }) {
 function FanartAdminRow({ entry, onRemove, onSaved }) {
   const [title, setTitle] = useState(entry.title || "");
   const [hoverMarkdown, setHoverMarkdown] = useState(entry.hoverMarkdown || "");
+  const [embedEligible, setEmbedEligible] = useState(entry.embedEligible === true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setTitle(entry.title || "");
     setHoverMarkdown(entry.hoverMarkdown || "");
-  }, [entry.title, entry.hoverMarkdown]);
+    setEmbedEligible(entry.embedEligible === true);
+  }, [entry.title, entry.hoverMarkdown, entry.embedEligible]);
 
   const save = async () => {
     setSaving(true);
@@ -189,7 +191,7 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, hoverMarkdown })
+        body: JSON.stringify({ title, hoverMarkdown, embedEligible })
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
@@ -207,6 +209,7 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
       <img src={assetUrl(entry.originalUrl || entry.url)} alt="" />
       <div className="admin-list-editor">
         <strong className="admin-list-filename">{entry.filename}</strong>
+        <label className="admin-embed-toggle"><input type="checkbox" checked={embedEligible} onChange={(event) => setEmbedEligible(event.target.checked)} /> Include in hourly embed rotation</label>
         <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
         <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
         <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
@@ -262,7 +265,7 @@ function AdminPage() {
   const [message, setMessage] = useState("Checking Discord session…");
 
   const loadEntries = useCallback(async () => {
-    const response = await fetch(apiUrl("/api/fanart"), { credentials: "include" });
+    const response = await fetch(apiUrl("/api/admin/fanart"), { credentials: "include" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The fanart API is unavailable.");
     setEntries(data.items || []);
@@ -411,6 +414,7 @@ function AdminPage() {
           <button className="admin-submit" type="submit">Upload fanart</button>
         </form>
         <p className="admin-message" aria-live="polite">{message}</p>
+        <p className="admin-copy">Check the pieces allowed in link previews, then save each entry. The banner rotates every hour and is cropped to 4:1. <a className="admin-back" href={apiUrl("/artoftheday.webp")} target="_blank" rel="noreferrer">View current banner ↗</a></p>
         <div className="admin-list">
           {entries.map((entry) => (
             <FanartAdminRow

@@ -20,6 +20,7 @@ The backend rate-limits `/api` traffic by resolved client IP, with a stricter li
 Fanart metadata includes a title and escaped light Markdown for the public hover tag. Authorized admins can edit both fields through the panel or the Discord DM app; the database migration adds `fanart.hover_markdown` for existing installations.
 The public gallery is a dedicated `/fanart` route in `v2/src/FanartPage.jsx`, with a native modal dialog for expanded images, titles and Markdown notes. Preserve keyboard navigation, touch browsing, focus restoration and responsive behavior when editing it.
 Uploads are converted to WebP with `sharp` before they are stored; the original bytes remain available to the admin preview. `WEBP_QUALITY` controls conversion quality, and `FANART_WEBP_DIR` is used for generated files only in filesystem fallback mode.
+Hourly link banners use `/artoftheday.webp` (alias `/api/artoftheday.webp`), generated as 1200 × 300 WebP from only fanart with the private `embed_eligible` flag. Admins check eligibility and save via the authenticated panel; changes are audited. Crops are cached separately in `embed_data`. New uploads default to unchecked, and an empty pool returns 404. Public fanart listings never expose this flag; the admin panel uses protected `GET /api/admin/fanart`.
 
 ## Access and secrets
 

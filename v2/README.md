@@ -55,7 +55,11 @@ The browser panel is available at `http://localhost:5173/admin` during Vite deve
 
 ## Production
 
-The initial HTML includes [Open Graph](https://ogp.me/) link-preview metadata with Fanart 1 and Sxber's introduction. The backend resolves absolute image/page URLs using `PUBLIC_SITE_URL` when set, or the request origin for raw-IP hosting. Set `PUBLIC_SITE_URL=https://your-domain.example` when moving behind a production proxy. Preview images use the original JPEG for compatibility; the public gallery continues to serve WebP.
+The initial HTML includes [Open Graph](https://ogp.me/) link-preview metadata with Sxber's introduction and an hourly rotating 4:1 banner. In `/admin`, check **Include in hourly embed rotation** on each eligible piece and click **Save changes**. New uploads are unchecked by default. `GET /artoftheday.webp` (also `/api/artoftheday.webp`) selects only checked images in ID order, cycling at each UTC hour boundary. A single checked piece stays selected; none returns HTTP 404 rather than using an unchecked piece.
+
+The backend crops the selected original to 1200 × 300 with Sharp's attention-based cover crop and caches the WebP separately in `fanart.embed_data` (or `FANART_WEBP_DIR` for filesystem fallback). It preserves original files and gallery WebPs. Admin flags are available only from protected `GET /api/admin/fanart`; `PATCH` changes are logged with the new boolean value. The image response requires cache revalidation, and the HTML image URL includes an hourly version. Third-party services such as Discord control their own preview caching: this does not update existing posted messages on an hourly schedule or force Discord's display dimensions.
+
+The backend resolves absolute image/page URLs using `PUBLIC_SITE_URL` when set, or the request origin for raw-IP hosting. Set `PUBLIC_SITE_URL=https://your-domain.example` when moving behind a production proxy. Run `npm run test:embed` for isolated filesystem tests; setting `TEST_EMBED_DATABASE_URL` to a disposable database named `sxber_embed_test` runs the same checks against PostgreSQL.
 
 ```powershell
 npm run build
