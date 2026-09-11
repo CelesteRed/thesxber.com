@@ -1,6 +1,6 @@
 # thesxber.com v2
 
-This is the React version of the original `v1` site. The public route keeps the same green full-screen layout, carousel behavior, social dock, contact modal, fanart gallery, lightbox, and click sound. The code uses plain JSX, JavaScript, and CSS without a component library.
+This is the React version of the original `v1` site. The public route keeps the same green full-screen layout, carousel behavior, social dock, contact modal, fanart gallery, lightbox, and click sound. The code uses plain JSX, JavaScript, and CSS without a component library. A single Node service serves the frontend and REST API; PostgreSQL stores fanart binaries and the cached YouTube rows.
 
 ## Local setup
 
@@ -12,9 +12,21 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. The API runs on `http://localhost:8787`.
+Open `http://localhost:5173`. The API runs on `http://localhost:8787`. If `DATABASE_URL` is empty, local development falls back to the existing filesystem fanart and an in-memory YouTube cache. The Docker setup below enables the persistent database.
 
-If `YOUTUBE_API_KEY` is empty, the carousel uses the same style of demo tiles as v1. The real feed is loaded server-side when the key and channel ID are configured, so the YouTube key is not shipped to the browser.
+## Docker Compose
+
+From this directory, copy `.env.example` to `.env`, set the database password and application secrets, then run:
+
+```powershell
+docker compose up --build -d
+```
+
+The app is available at `http://localhost:8787`. PostgreSQL persists in the `sxber-postgres` volume. On the first boot, the existing `public/fanart` files are imported into the `fanart` table. New uploads are stored as `bytea` data in PostgreSQL, so the app container does not need SFTP or a writable image directory.
+
+If `YOUTUBE_API_KEY` is empty, the carousel uses the same style of demo tiles as v1. When configured, the backend requests the YouTube API and stores the latest 20 videos in PostgreSQL. Every browser reads `/api/youtube`; the backend refreshes the cache at most once per `YOUTUBE_CACHE_TTL_SECONDS` (60 seconds by default), so API keys and quota are never used per browser.
+
+The REST surface is intentionally small: `GET /api/health`, `GET /api/youtube`, `GET /api/fanart`, `GET /fanart/:filename`, and protected `POST`/`DELETE /api/admin/fanart` endpoints. The Discord bot calls those protected endpoints instead of writing files directly.
 
 ## Fanart updates
 
@@ -37,4 +49,4 @@ npm run build
 npm start
 ```
 
-Run this Node process on the host that owns the persistent `FANART_DIR`. It serves the Vite build, the API, the uploaded images, and the Discord bot together. Keep `.env` outside version control and use a persistent disk for `public/fanart` (or point `FANART_DIR` at one).
+Run this Node process alongside PostgreSQL, or use Docker Compose. Keep `.env` outside version control. For an existing database, set `DATABASE_URL`; set `DATABASE_SSL=true` when your provider requires TLS. The filesystem `FANART_DIR` is only a seed/fallback path when no database URL is configured.

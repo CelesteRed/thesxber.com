@@ -6,7 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import multer from "multer";
-import { extensionFromUpload, fanartDir, getFanartEntries, removeFanart, saveFanartBuffer } from "./fanart.js";
+import { closeDatabase, initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
+import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk } from "./fanart.js";
+import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -39,15 +41,6 @@ const corsOptions = configuredOrigins.length
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 
-function adminTokenMatches(request) {
-  const expected = process.env.ADMIN_API_TOKEN || "";
-  const provided = (request.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!expected || !provided) return false;
-  const expectedBuffer = Buffer.from(expected);
-  const providedBuffer = Buffer.from(provided);
-  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
-}
-
 function normalizeIp(ip) {
   const value = String(ip || "").trim().toLowerCase();
   return value.startsWith("::ffff:") ? value.slice(7) : value;
@@ -57,6 +50,22 @@ function adminIpMatches(request) {
   if (!allowedAdminIps.size) return false;
   const requestIp = normalizeIp(request.ip);
   return [...allowedAdminIps].some((allowedIp) => normalizeIp(allowedIp) === requestIp);
+}
+
+function tokenMatches(expected, provided) {
+  if (!expected || !provided) return false;
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+function adminTokenMatches(request) {
+  const provided = (request.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  return tokenMatches(process.env.ADMIN_API_TOKEN || "", provided);
+}
+
+function internalTokenMatches(request) {
+  return tokenMatches(process.env.INTERNAL_API_TOKEN || "", request.get("x-internal-api-key") || "");
 }
 
 function requireAdminIp(request, response, next) {
@@ -70,8 +79,9 @@ function requireAdminPageIp(request, response, next) {
 }
 
 function requireAdmin(request, response, next) {
-  if (!adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
-  if (!adminTokenMatches(request)) return response.status(401).json({ error: "Invalid admin token" });
+  const internal = internalTokenMatches(request);
+  if (!internal && !adminIpMatches(request)) return response.status(403).json({ error: "Admin access is not available from this IP" });
+  if (!internal && !adminTokenMatches(request)) return response.status(401).json({ error: "Invalid admin token" });
   next();
 }
 
@@ -81,30 +91,17 @@ const upload = multer({
   fileFilter: (request, file, callback) => callback(null, Boolean(extensionFromUpload(file)))
 });
 
-app.get("/api/health", (request, response) => response.json({ ok: true, service: "thesxber-v2" }));
+app.get("/api/health", (request, response) => response.json({
+  ok: true,
+  service: "thesxber-v2",
+  database: isDatabaseReady() ? "ready" : (isDatabaseConfigured() ? "starting" : "filesystem-fallback")
+}));
 
 app.get("/api/admin/access", requireAdminIp, (request, response) => response.json({ ok: true }));
 
 app.get("/api/youtube", async (request, response) => {
-  const key = process.env.YOUTUBE_API_KEY;
-  const channelId = process.env.YOUTUBE_CHANNEL_ID;
-  if (!key || !channelId) return response.json({ configured: false, items: [] });
-
   try {
-    const url = new URL("https://www.googleapis.com/youtube/v3/search");
-    url.search = new URLSearchParams({ key, channelId, part: "snippet,id", order: "date", maxResults: "20" });
-    const youtubeResponse = await fetch(url);
-    if (!youtubeResponse.ok) throw new Error(`YouTube responded with ${youtubeResponse.status}`);
-    const data = await youtubeResponse.json();
-    const items = (data.items || [])
-      .filter((item) => item.id?.videoId)
-      .map((item) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
-        videoUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`
-      }));
-    response.json({ configured: true, items });
+    response.json(await getYouTubeFeed());
   } catch (error) {
     console.error("YouTube feed error:", error.message);
     response.status(502).json({ error: "Unable to load YouTube feed" });
@@ -123,7 +120,10 @@ app.get("/api/fanart", async (request, response) => {
 app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (request, response) => {
   if (!request.file) return response.status(400).json({ error: "Upload an image file" });
   try {
-    const item = await saveFanartBuffer(request.file.buffer, { extension: extensionFromUpload(request.file), title: request.body.title || "" });
+    const item = await saveFanartBuffer(request.file.buffer, {
+      extension: extensionFromUpload(request.file),
+      title: request.body.title || ""
+    });
     response.status(201).json({ item });
   } catch (error) {
     response.status(400).json({ error: error.message || "Unable to save fanart" });
@@ -139,27 +139,80 @@ app.delete("/api/admin/fanart/:filename", requireAdmin, async (request, response
   }
 });
 
+app.get("/fanart/:filename", async (request, response, next) => {
+  try {
+    const image = await getFanartImage(request.params.filename);
+    if (image) {
+      response.set("Content-Type", image.mimeType);
+      response.set("Cache-Control", "public, max-age=3600");
+      return response.send(image.buffer);
+    }
+    if (isDatabaseReady()) return response.status(404).send("Fanart not found");
+    next();
+  } catch (error) {
+    console.error("Fanart image error:", error.message);
+    response.status(500).send("Unable to load fanart");
+  }
+});
+
 app.get(/^\/admin\/?$/, requireAdminPageIp, (request, response) => {
   const indexFile = path.join(distDir, "index.html");
   if (!fs.existsSync(indexFile)) return response.status(404).send("Build the v2 app with npm run build first.");
   response.sendFile(indexFile);
 });
 
+// This fallback serves seeded images while local development runs without DB.
 app.use("/fanart", express.static(fanartDir, { maxAge: "1h" }));
 if (fs.existsSync(distDir)) app.use(express.static(distDir));
 app.get(/.*/, (request, response) => {
-  if (fs.existsSync(path.join(distDir, "index.html"))) return response.sendFile(path.join(distDir, "index.html"));
+  const indexFile = path.join(distDir, "index.html");
+  if (fs.existsSync(indexFile)) return response.sendFile(indexFile);
   response.status(404).send("Build the v2 app with npm run build first.");
 });
 
-export function startServer() {
-  const server = app.listen(port, () => console.info(`thesxber v2 API listening on http://localhost:${port}`));
-  startDiscordBot().catch((error) => console.error("Discord bot startup error:", error.message));
+async function waitForDatabase() {
+  if (!isDatabaseConfigured()) return false;
+  const attempts = Math.max(1, Number(process.env.DATABASE_STARTUP_RETRIES || 20));
+  const delayMs = Math.max(250, Number(process.env.DATABASE_STARTUP_DELAY_MS || 1500));
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await initializeDatabase();
+      return true;
+    } catch (error) {
+      if (attempt === attempts) throw error;
+      console.warn(`Database is not ready yet (attempt ${attempt}/${attempts}); retrying…`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return false;
+}
 
-  function shutdown() { server.close(() => process.exit(0)); }
+export async function startServer() {
+  await waitForDatabase();
+  const seeded = await seedFanartFromDisk();
+  if (seeded) console.info(`Seeded ${seeded} fanart images into PostgreSQL.`);
+  const server = app.listen(port, () => console.info(`thesxber v2 API listening on http://localhost:${port}`));
+  startYouTubeCacheScheduler();
+
+  let discordClient = null;
+  startDiscordBot().then((client) => { discordClient = client; }).catch((error) => console.error("Discord bot startup error:", error.message));
+
+  async function shutdown() {
+    stopYouTubeCacheScheduler();
+    discordClient?.destroy();
+    server.close(async () => {
+      await closeDatabase();
+      process.exit(0);
+    });
+  }
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   return server;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) startServer();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer().catch((error) => {
+    console.error("Server startup failed:", error);
+    process.exitCode = 1;
+  });
+}

@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sxber}
+      POSTGRES_USER: ${POSTGRES_USER:-sxber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-postgres-password}
+    volumes:
+      - sxber-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sxber} -d ${POSTGRES_DB:-sxber}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      DATABASE_URL: ${DATABASE_URL:-postgresql://sxber:change-this-postgres-password@db:5432/sxber}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      DATABASE_STARTUP_RETRIES: ${DATABASE_STARTUP_RETRIES:-30}
+      DATABASE_STARTUP_DELAY_MS: ${DATABASE_STARTUP_DELAY_MS:-1500}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      YOUTUBE_CHANNEL_ID: ${YOUTUBE_CHANNEL_ID}
+      YOUTUBE_CACHE_TTL_SECONDS: ${YOUTUBE_CACHE_TTL_SECONDS:-60}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8787}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DISCORD_ALLOWED_USER_IDS: ${DISCORD_ALLOWED_USER_IDS}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://127.0.0.1:8787}
+    ports:
+      - "${APP_PORT:-8787}:8787"
+
+volumes:
+  sxber-postgres:
