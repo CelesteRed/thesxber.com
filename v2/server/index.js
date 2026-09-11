@@ -234,10 +234,11 @@ app.get("/api/admin/activity", requireAdmin, async (request, response) => {
 
 app.get("/fanart/:filename", async (request, response, next) => {
   try {
-    const image = await getFanartImage(request.params.filename);
+    const original = request.query.original === "1" || request.query.original === "true";
+    const image = await getFanartImage(request.params.filename, { original });
     if (image) {
       response.set("Content-Type", image.mimeType);
-      response.set("Cache-Control", "public, max-age=3600");
+      response.set("Cache-Control", original ? "private, max-age=300" : "public, max-age=3600");
       return response.send(image.buffer);
     }
     if (isDatabaseReady()) return response.status(404).send("Fanart not found");

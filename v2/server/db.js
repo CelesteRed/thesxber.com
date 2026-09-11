@@ -67,10 +67,12 @@ export async function initializeDatabase() {
         hover_markdown TEXT NOT NULL DEFAULT '',
         mime_type TEXT NOT NULL,
         image_data BYTEA NOT NULL,
+        webp_data BYTEA,
         uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS hover_markdown TEXT NOT NULL DEFAULT '';
+      ALTER TABLE fanart ADD COLUMN IF NOT EXISTS webp_data BYTEA;
 
       CREATE TABLE IF NOT EXISTS youtube_videos (
         video_id TEXT PRIMARY KEY,

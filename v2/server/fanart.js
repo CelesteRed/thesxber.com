@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import sharp from "sharp";
 import { isDatabaseReady, query } from "./db.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,10 @@ const mimeByExtension = {
 };
 const maxTitleLength = 120;
 const maxHoverMarkdownLength = 2000;
+const configuredWebpQuality = Number(process.env.WEBP_QUALITY || 82);
+const webpQuality = Number.isFinite(configuredWebpQuality)
+  ? Math.min(100, Math.max(1, Math.round(configuredWebpQuality)))
+  : 82;
 
 function normalizeTitle(value) {
   return String(value || "").trim().slice(0, maxTitleLength);
@@ -37,6 +42,7 @@ function resolveFromProject(value, fallback) {
 // fallback when DATABASE_URL is intentionally omitted during development.
 export const fanartDir = resolveFromProject(process.env.FANART_DIR, path.join(projectDir, "public", "fanart"));
 export const metadataFile = resolveFromProject(process.env.FANART_METADATA_FILE, path.join(projectDir, "data", "fanart.json"));
+export const webpCacheDir = resolveFromProject(process.env.FANART_WEBP_DIR, path.join(projectDir, "data", "fanart-webp"));
 
 async function ensureFilesystemStorage() {
   await fs.mkdir(fanartDir, { recursive: true });
@@ -46,6 +52,16 @@ async function ensureFilesystemStorage() {
   } catch {
     await fs.writeFile(metadataFile, "{}\n", "utf8");
   }
+}
+
+async function ensureWebpCacheStorage() {
+  await fs.mkdir(webpCacheDir, { recursive: true });
+}
+
+async function convertToWebp(buffer, extension) {
+  return sharp(buffer, { animated: extension === ".gif" || extension === ".webp" })
+    .webp({ quality: webpQuality })
+    .toBuffer();
 }
 
 async function readMetadata() {
@@ -93,6 +109,7 @@ async function getFilesystemEntries() {
     id: index,
     filename,
     url: `/fanart/${encodeURIComponent(filename)}`,
+    originalUrl: `/fanart/${encodeURIComponent(filename)}?original=1`,
     title: metadata[filename]?.title || `Fanart ${index}`,
     hoverMarkdown: metadata[filename]?.hoverMarkdown || "",
     uploadedAt: metadata[filename]?.uploadedAt || null
@@ -100,10 +117,12 @@ async function getFilesystemEntries() {
 }
 
 function formatDatabaseEntry(row) {
+  const encodedFilename = encodeURIComponent(row.filename);
   return {
     id: row.id,
     filename: row.filename,
-    url: `/fanart/${encodeURIComponent(row.filename)}`,
+    url: `/fanart/${encodedFilename}`,
+    originalUrl: `/fanart/${encodedFilename}?original=1`,
     title: row.title || `Fanart ${row.id}`,
     hoverMarkdown: row.hover_markdown || "",
     uploadedAt: row.uploaded_at || null
@@ -118,11 +137,12 @@ export async function seedFanartFromDisk() {
   let seeded = 0;
   for (const file of files) {
     const buffer = await fs.readFile(path.join(fanartDir, file.filename));
+    const webpBuffer = await convertToWebp(buffer, file.extension);
     await query(
-      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (filename) DO NOTHING`,
-      [file.filename, `Fanart ${file.index}`, "", mimeByExtension[file.extension], buffer]
+      [file.filename, `Fanart ${file.index}`, "", mimeByExtension[file.extension], buffer, webpBuffer]
     );
     seeded += 1;
   }
@@ -137,26 +157,59 @@ export async function getFanartEntries() {
   return getFilesystemEntries();
 }
 
-export async function getFanartImage(filename) {
+export async function getFanartImage(filename, { original = false } = {}) {
   const safeName = safeFanartFilename(filename);
   if (!safeName) return null;
 
   if (isDatabaseReady()) {
-    const result = await query("SELECT filename, mime_type, image_data FROM fanart WHERE filename = $1", [safeName]);
+    const result = await query("SELECT filename, mime_type, image_data, webp_data FROM fanart WHERE filename = $1", [safeName]);
     if (!result.rows[0]) return null;
-    return {
-      filename: result.rows[0].filename,
-      mimeType: result.rows[0].mime_type,
-      buffer: result.rows[0].image_data
+    const row = result.rows[0];
+    const originalImage = {
+      filename: row.filename,
+      mimeType: row.mime_type,
+      buffer: row.image_data
     };
+    if (original) return originalImage;
+    if (row.webp_data?.length) {
+      return { filename: row.filename, mimeType: "image/webp", buffer: row.webp_data };
+    }
+    try {
+      const webpBuffer = await convertToWebp(row.image_data, extensionFor(row.filename));
+      await query("UPDATE fanart SET webp_data = $1 WHERE filename = $2 AND webp_data IS NULL", [webpBuffer, safeName]);
+      return { filename: row.filename, mimeType: "image/webp", buffer: webpBuffer };
+    } catch (error) {
+      console.error(`Unable to convert ${safeName} to WebP:`, error.message);
+      return originalImage;
+    }
   }
 
   try {
     const extension = extensionFor(safeName);
-    return { filename: safeName, mimeType: mimeByExtension[extension], buffer: await fs.readFile(path.join(fanartDir, safeName)) };
-  } catch {
+    const originalBuffer = await fs.readFile(path.join(fanartDir, safeName));
+    if (original) {
+      return { filename: safeName, mimeType: mimeByExtension[extension], buffer: originalBuffer };
+    }
+    await ensureWebpCacheStorage();
+    const cachePath = path.join(webpCacheDir, `${safeName}.webp`);
+    try {
+      return { filename: safeName, mimeType: "image/webp", buffer: await fs.readFile(cachePath) };
+    } catch {
+      const webpBuffer = await convertToWebp(originalBuffer, extension);
+      await fs.writeFile(cachePath, webpBuffer);
+      return { filename: safeName, mimeType: "image/webp", buffer: webpBuffer };
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") console.error(`Unable to load ${safeName}:`, error.message);
     return null;
   }
+}
+
+async function saveOriginalAndWebp(buffer, filename, webpBuffer) {
+  await ensureFilesystemStorage();
+  await fs.writeFile(path.join(fanartDir, filename), buffer);
+  await ensureWebpCacheStorage();
+  await fs.writeFile(path.join(webpCacheDir, `${filename}.webp`), webpBuffer);
 }
 
 async function nextFanartIndex() {
@@ -175,19 +228,19 @@ export async function saveFanartBuffer(buffer, { extension, title = "", hoverMar
   const filename = `fanart${await nextFanartIndex()}${normalizedExtension}`;
   const normalizedTitle = normalizeTitle(title);
   const normalizedHoverMarkdown = normalizeHoverMarkdown(hoverMarkdown);
+  const webpBuffer = await convertToWebp(buffer, normalizedExtension);
 
   if (isDatabaseReady()) {
     const result = await query(
-      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, filename, title, hover_markdown, uploaded_at`,
-      [filename, normalizedTitle, normalizedHoverMarkdown, mimeByExtension[normalizedExtension], buffer]
+      [filename, normalizedTitle, normalizedHoverMarkdown, mimeByExtension[normalizedExtension], buffer, webpBuffer]
     );
     return formatDatabaseEntry(result.rows[0]);
   }
 
-  await ensureFilesystemStorage();
-  await fs.writeFile(path.join(fanartDir, filename), buffer);
+  await saveOriginalAndWebp(buffer, filename, webpBuffer);
   const metadata = await readMetadata();
   metadata[filename] = { title: normalizedTitle, hoverMarkdown: normalizedHoverMarkdown, uploadedAt: new Date().toISOString() };
   await writeMetadata(metadata);
@@ -245,6 +298,7 @@ export async function removeFanart(filename) {
   }
 
   await fs.unlink(path.join(fanartDir, safeName));
+  try { await fs.unlink(path.join(webpCacheDir, `${safeName}.webp`)); } catch (error) { if (error?.code !== "ENOENT") throw error; }
   const metadata = await readMetadata();
   delete metadata[safeName];
   await writeMetadata(metadata);

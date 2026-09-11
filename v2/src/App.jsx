@@ -322,7 +322,7 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
 
   return (
     <div className="admin-list-row">
-      <img src={assetUrl(entry.url)} alt="" />
+      <img src={assetUrl(entry.originalUrl || entry.url)} alt="" />
       <div className="admin-list-editor">
         <strong className="admin-list-filename">{entry.filename}</strong>
         <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>

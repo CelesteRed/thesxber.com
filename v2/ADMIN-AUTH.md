@@ -44,6 +44,7 @@ DISCORD_ALLOWED_USER_IDS=discord-user-id-1,discord-user-id-2
 INTERNAL_API_TOKEN=replace-with-a-long-random-internal-token
 AUTH_COOKIE_SECURE=true
 ADMIN_SESSION_TTL_SECONDS=43200
+WEBP_QUALITY=82
 # Optional: set true only behind a trusted proxy to record forwarded client IPs in the ledger.
 TRUST_PROXY=false
 # API requests are limited per resolved client IP; these are the defaults.
@@ -114,6 +115,10 @@ DELETE /api/admin/fanart/:filename
 ```
 
 The admin fanart list lets an authorized user edit each entry's title and hover Markdown. Hover tags support `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `__underline__`, and line breaks; the renderer escapes HTML before applying those formatting rules.
+
+## Fanart image variants
+
+The backend keeps the uploaded original bytes in `fanart.image_data` and stores a generated WebP copy in `fanart.webp_data`. Public `/fanart/:filename` responses use the WebP copy and `image/webp` content type. The admin panel requests `/fanart/:filename?original=1`, which preserves the original PNG, JPEG, GIF, or WebP for review. Existing rows are converted lazily the first time they are requested publicly; new uploads are converted before they are stored. `WEBP_QUALITY` controls the generated quality from 1–100.
 
 The compatibility endpoint `GET /api/admin/access` reports the current session state for the admin UI.
 
