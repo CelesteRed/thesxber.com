@@ -14,4 +14,3 @@ export function markdownToHtml(value) {
     .replace(/\r\n?/g, "\n")
     .replace(/\n/g, "<br />");
 }
-
