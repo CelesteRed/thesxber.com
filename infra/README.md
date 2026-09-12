@@ -1,8 +1,10 @@
 # Sxber infrastructure handoff
 
-Configured on 2026-09-11.
+Historical setup notes from 2026-09-11. The v2 site has since been deployed with Docker Compose; website setup states below describe the earlier infrastructure handoff.
 
-## Current state
+The VPS is managed by **@CelesteRed on Discord**. For changes, DM @CelesteRed, open a GitHub issue, or submit a pull request if you have implemented the change. See the [main README](../README.md) for contact and contribution details.
+
+## Infrastructure setup snapshot
 
 - Sxber public IPv4: 83.147.217.242; SSH remains on TCP 6767.
 - Nginx, WireGuard, UFW, Certbot, conntrack and tcpdump installed.
@@ -47,13 +49,13 @@ Verified after the IPv4-only change: a recent handshake, tunnel pings, real clie
 
 New Pterodactyl allocations should bind 10.77.0.2 or an appropriate wildcard. Services bound exclusively to 10.0.0.21 need a separate allocation. A future reboot/tunnel restart has not been tested.
 
-## Website
+## Website setup snapshot
 
 The repository identifies the domain as thesxber.com. Nginx is configured for thesxber.com and www.thesxber.com and proxies to the repository app's port, 127.0.0.1:8787.
 
-The application itself has not been deployed. Until it runs, Nginx returns an intentional HTTP 503 setup page. An external HTTP request verified this behavior. The ACME challenge location serves /var/www/letsencrypt.
+Docker and Nginx are prepared for a future site at 127.0.0.1:8787. The v2 app was briefly deployed for testing and then stopped after the user's clarification. HTTPS currently serves a 503 setup page. See WEBSITE.md for the current state and operating commands. The ACME challenge location serves /var/www/letsencrypt.
 
-TCP 443 is bound by Nginx but rejects TLS handshakes until a domain certificate is installed. HTTPS is NOT ready yet.
+Nginx now proxies HTTPS on 443 to Docker and redirects HTTP to the same hostname over HTTPS. It uses a temporary self-signed certificate for origin testing; browser-trusted HTTPS remains pending DNS validation and Let's Encrypt issuance.
 
 DNS currently returns Cloudflare proxy addresses; the origin record could not be inspected. Set the website's origin A record to 83.147.217.242 when ready for cutover, then issue/install the domain certificate and configure HTTPS. No DNS records were changed. Use a DNS-only record for ordinary Minecraft TCP/UDP traffic.
 
