@@ -12,7 +12,7 @@ export function throwVelocity(points) {
 }
 
 // DOM animation stays outside React's render loop. Every listener/frame is disposed.
-export function startFloatingEmojis(layer, items, apiBase, gallery = false, count = 10) {
+export function startFloatingEmojis(layer, items, apiBase, gallery = false, count = 10, onInteraction = () => {}) {
   const maximum = Number.isInteger(count) ? clamp(count, 0, 100) : 10;
   if (!items.length || maximum === 0) return () => {};
   const cleanup = new AbortController();
@@ -50,10 +50,13 @@ export function startFloatingEmojis(layer, items, apiBase, gallery = false, coun
       sprite.nextQuote = elapsed + (held ? random(2, 4) : random(5, 15));
     };
     sprite.say = say;
+    button.addEventListener("pointerenter", event => {
+      if ((event.pointerType === "mouse" || event.pointerType === "pen") && event.buttons === 0) onInteraction("hover");
+    });
     button.addEventListener("pointerdown", event => {
       if (event.button !== 0 || sprite.held) return;
       event.preventDefault(); button.setPointerCapture(event.pointerId);
-      sprite.held = true; sprite.pointerId = event.pointerId; sprite.distance = 0;
+      sprite.held = true; sprite.pointerId = event.pointerId; sprite.distance = 0; sprite.dragReported = false;
       sprite.offsetX = event.clientX - sprite.x; sprite.offsetY = event.clientY - sprite.y;
       sprite.points = [{ x: event.clientX, y: event.clientY, time: performance.now() }];
       say(true);
@@ -62,6 +65,7 @@ export function startFloatingEmojis(layer, items, apiBase, gallery = false, coun
       if (!sprite.held || event.pointerId !== sprite.pointerId) return;
       const previous = sprite.points.at(-1);
       sprite.distance += Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
+      if (sprite.distance >= 5 && !sprite.dragReported) { sprite.dragReported = true; onInteraction("drag"); }
       sprite.points.push({ x: event.clientX, y: event.clientY, time: performance.now() });
       sprite.points = sprite.points.slice(-20);
       sprite.x = clamp(event.clientX - sprite.offsetX, 0, Math.max(0, width - 64));
@@ -74,12 +78,15 @@ export function startFloatingEmojis(layer, items, apiBase, gallery = false, coun
       const velocity = throwVelocity(sprite.points);
       if (Math.hypot(velocity.x, velocity.y) > 0) { sprite.vx = velocity.x; sprite.vy = velocity.y; }
       bubble.hidden = true; sprite.nextQuote = elapsed + random(5, 15);
-      if (!cancelled && sprite.distance < 5 && sprite.link) window.open(sprite.link, "_blank", "noopener,noreferrer");
+      if (!cancelled && sprite.distance < 5) {
+        onInteraction("click");
+        if (sprite.link) window.open(sprite.link, "_blank", "noopener,noreferrer");
+      }
     };
     button.addEventListener("pointerup", event => release(event));
     button.addEventListener("pointercancel", event => release(event, true));
     button.addEventListener("lostpointercapture", event => release(event, true));
-    button.addEventListener("click", event => { if (event.detail === 0) { say(false); if (sprite.link) window.open(sprite.link, "_blank", "noopener,noreferrer"); } });
+    button.addEventListener("click", event => { if (event.detail === 0) { onInteraction("click"); say(false); if (sprite.link) window.open(sprite.link, "_blank", "noopener,noreferrer"); } });
     sprites.push(sprite);
   }
   function tick(now) {

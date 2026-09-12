@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { throwVelocity } from "../src/floating-emojis.js";
+import { createEmojiUnlockTracker, hasEmojiUnlock, emojiUnlockCookie } from "../src/emoji-unlock.js";
 import { markdownToHtml } from "../src/markdown.js";
 
 test("throw speed uses recent movement, is capped, and stationary releases stop", () => {
@@ -13,6 +14,31 @@ test("throw speed uses recent movement, is capped, and stationary releases stop"
   assert.deepEqual(throwVelocity([{ x: 0, y: 0, time: 0 }, { x: 200, y: 200, time: 1000 }]), { x: 0, y: 0 });
   assert.equal(markdownToHtml('<img src=x onerror="alert(1)"> **Hello**').includes("<img"), false);
   assert.ok(markdownToHtml("**Hello**").includes("<strong>Hello</strong>"));
+});
+
+test("emoji easter egg needs ten of one action and unlocks only once", () => {
+  for (const trigger of ["click", "hover", "drag"]) {
+    let unlocks = 0;
+    const interact = createEmojiUnlockTracker(() => unlocks++);
+    interact("pointerdown");
+    for (const action of ["click", "hover", "drag"]) {
+      for (let i = 0; i < 9; i++) interact(action);
+      assert.equal(unlocks, 0, "Counts are separate; nine of each does not unlock");
+    }
+    interact(trigger);
+    assert.equal(unlocks, 1);
+    for (let i = 0; i < 20; i++) interact("click");
+    interact("drag"); interact("hover");
+    assert.equal(unlocks, 1, "No repeated toast after unlocking");
+  }
+  const restored = createEmojiUnlockTracker(() => assert.fail("Returning visitors should not get another toast"), true);
+  restored("hover"); restored("drag");
+  assert.equal(hasEmojiUnlock("unrelated=1; sxber-emoji-unlocked=1; another=2"), true);
+  assert.equal(hasEmojiUnlock("sxber-emoji-unlocked=0"), false);
+  assert.equal(hasEmojiUnlock("prefix-sxber-emoji-unlocked=1"), false);
+  assert.equal(hasEmojiUnlock("sxber-emoji-unlocked=10"), false);
+  assert.match(emojiUnlockCookie(false), /Path=\/; Max-Age=31536000; SameSite=Lax$/);
+  assert.match(emojiUnlockCookie(true), /; Secure$/);
 });
 
 test("emoji API: upload, originals, editing, hidden assets, validation and audit", async () => {

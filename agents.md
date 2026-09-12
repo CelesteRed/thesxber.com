@@ -51,3 +51,5 @@ The emoji controller stores the global 0–30 count in `floating_emoji_settings`
 ## Admin layout
 
 `AdminSection.jsx` uses native details/summary sections, all closed on a fresh page load. Keep content mounted when collapsed so pending edits, selected uploads, and errors survive toggles. The full-width `.admin-dashboard` contains responsive fanart and emoji card grids; small screens use a single column. Section headers expose unsaved/error counts, and the shared floating Save all button works even with sections closed. Preserve the separate narrow Discord login card and the public gallery layout.
+
+The visitor count control is an Easter egg: `emoji-unlock.js` tracks **10 clicks OR 10 distinct drags OR 10 hovers**, with separate counters shared across spawned emojis. One drag reports once after 5px movement; touch pointer entry must not count as hover. Unlock once, announce the exact toast “Emoji Easter Egg Unlocked”, and persist the unlocked state in the `sxber-emoji-unlocked` cookie for one year. Preserve the stable interaction callback so unlocking does not restart an active drag. The count control stays visible for cookie-unlocked visitors even at count zero.

@@ -281,3 +281,5 @@ body { display: flex; justify-content: center; align-items: center; }
 .emoji-count-control button:disabled { opacity: .4; cursor: default; }
 .emoji-count-control input { width: 56px; height: 30px; border: 1px solid #23522766; border-radius: 8px; background: #f4fbf3; color: #235227; font: inherit; font-size: 12px; text-align: center; }
 .emoji-count-control :focus-visible { outline: 2px solid #235227; outline-offset: 2px; }
+.emoji-unlock-announcement { position: fixed; top: max(22px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 250; max-width: calc(100vw - 32px); pointer-events: none; }
+.emoji-unlock-toast { padding: 14px 22px; border: 2px solid #235227; border-radius: 12px; background: #eef7ec; color: #1a421d; box-shadow: 0 6px 24px #17331b33; font: 700 14px/1.4 system-ui, sans-serif; text-align: center; }
