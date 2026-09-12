@@ -23,6 +23,7 @@ import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
 import { getArtworkOfTheHour, HOUR_MS, saveBannerCrop, prepareBannerCrop } from "./embed-art.js";
+import { registerEmojiRoutes } from "./emoji-routes.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -91,6 +92,8 @@ async function requireAdmin(request, response, next) {
     return response.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
 }
+
+registerEmojiRoutes(app, requireAdmin);
 
 const upload = multer({
   storage: multer.memoryStorage(),

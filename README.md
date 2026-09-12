@@ -23,3 +23,9 @@ Coordinate VPS configuration and live deployments with @CelesteRed. Do not inclu
 For setup and development, see the [v2 README](v2/README.md). For admin access, see the [admin guide](v2/ADMIN-AUTH.md). Contributors should also read the [repository guide](agents.md).
 
 Use `v2/.env.example` as a configuration template and keep your actual `v2/.env` private.
+
+## Floating emojis
+
+The admin panel has a **Floating emojis** section for images, random quotes, held quotes, optional fanart-page quotes, click links, and visibility. Use the same floating **Save all** button for emoji and fanart edits. See the [floating emoji guide](v2/FLOATING-EMOJIS.md) for controls, storage, and API details.
+
+The public footer credits [made by @celestered](https://github.com/CelesteRed).

@@ -215,3 +215,21 @@ body { display: flex; justify-content: center; align-items: center; }
   .switch-icon-btn { width: 40px; height: 36px; }
   .switch-card { width: 180px; height: 180px; min-width: 180px; }
 }
+
+
+.site-credit { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 8px 0; font-size: 11px; color: #235227; }
+.site-credit a { color: inherit; text-decoration: none; }
+.site-credit a:hover { text-decoration: underline; }
+.site-credit button { font: inherit; color: inherit; background: transparent; border: 1px solid #23522766; border-radius: 12px; padding: 3px 9px; cursor: pointer; }
+.floating-emoji-layer { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
+.floating-emoji-layer[hidden] { display: none; }
+.floating-emoji { position: absolute; top: 0; left: 0; width: 64px; height: 64px; padding: 0; border: 0; background: transparent; pointer-events: auto; touch-action: none; cursor: grab; user-select: none; will-change: transform; }
+.floating-emoji img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.floating-emoji.is-held { cursor: grabbing; z-index: 2; }
+.floating-emoji.is-near img, .floating-emoji:focus-visible img, .floating-emoji.is-held img { filter: drop-shadow(3px 0 1px white) drop-shadow(-3px 0 1px white) drop-shadow(0 3px 1px white) drop-shadow(0 -3px 1px white); }
+.floating-emoji:focus-visible { outline: 2px solid #235227; border-radius: 10px; }
+.emoji-bubble { position: absolute; width: 200px; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; background: #f5fff3; color: #1a421d; border: 2px solid #235227; box-shadow: 0 3px 10px #17331b25; font: 600 13px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; pointer-events: none; }
+.admin-emojis { margin-top: 32px; padding-top: 24px; border-top: 1px solid #23522755; }
+.emoji-admin-preview { display: grid; gap: 8px; font-size: 10px; }
+.emoji-admin-preview img { object-fit: contain; background: #dcecd7; }
+.emoji-admin-preview a { color: #235227; overflow-wrap: anywhere; }

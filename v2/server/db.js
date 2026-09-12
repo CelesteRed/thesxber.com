@@ -87,6 +87,20 @@ export async function initializeDatabase() {
         fetched_at TIMESTAMPTZ NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS floating_emojis (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        quotes JSONB NOT NULL DEFAULT '[]',
+        held_quotes JSONB NOT NULL DEFAULT '[]',
+        fanart_quotes JSONB NOT NULL DEFAULT '[]',
+        links JSONB NOT NULL DEFAULT '[]',
+        original_data BYTEA NOT NULL,
+        original_mime TEXT NOT NULL,
+        webp_data BYTEA NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS youtube_cache_state (
         id SMALLINT PRIMARY KEY CHECK (id = 1),
         fetched_at TIMESTAMPTZ,

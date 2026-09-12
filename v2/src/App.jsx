@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import SiteCredit, { PublicAtmosphere } from "./SiteCredit";
+import EmojiAdminSection, { updateEmojiDraft } from "./EmojiAdminSection";
 import FanartPage from "./FanartPage";
 import BannerCropEditor from "./BannerCropEditor";
 import { updateFanartDraft } from "./fanart-drafts.js";
@@ -141,6 +143,7 @@ function BottomDock() {
         </div>
       </div>
       <div className="dock-label">{label}</div>
+      <SiteCredit />
       <div className="switch-line" />
     </footer>
   );
@@ -241,6 +244,7 @@ function AdminPage() {
   const dirtyCount = Object.keys(drafts).length;
   const [file, setFile] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [emojis, setEmojis] = useState([]);
   const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
   const [message, setMessage] = useState("Checking Discord session…");
@@ -263,6 +267,28 @@ function AdminPage() {
     setSaveErrors(current => { const next = { ...current }; delete next[entry.filename]; return next; });
   };
 
+  const changeEmoji = (entry, changes) => {
+    const key = `emoji:${entry.id}`;
+    setDrafts(current => {
+      const next = { ...current }, draft = updateEmojiDraft(entry, current[key], changes);
+      if (Object.keys(draft).length) next[key] = draft; else delete next[key];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+  };
+  const removeEmoji = async (entry) => {
+    try {
+      const response = await fetch(apiUrl(`/api/admin/emojis/${entry.id}`), { method: "DELETE", credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to remove emoji");
+      setEmojis(current => current.filter(item => item.id !== entry.id));
+      const key = `emoji:${entry.id}`;
+      setDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+      setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+      setMessage(`Removed ${entry.name}.`); loadActivity().catch(() => {});
+    } catch (error) { setMessage(error.message); }
+  };
+
   const saveAll = async () => {
     if (savingAll || !dirtyCount) return;
     setSavingAll(true);
@@ -271,20 +297,23 @@ function AdminPage() {
     let saved = 0;
     for (const [filename, draft] of Object.entries(drafts)) {
       try {
-        const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(filename)}`, {
+        const emoji = filename.startsWith("emoji:");
+        const endpoint = emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const response = await fetch(apiUrl(endpoint), {
           method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(draft)
         });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
-        if (!response.ok) throw new Error(data.error || "Unable to save this artwork. Try again.");
-        setEntries(current => current.map(entry => entry.filename === filename ? data.item : entry));
+        if (!response.ok) throw new Error(data.error || "Unable to save this item. Try again.");
+        if (emoji) setEmojis(current => current.map(entry => entry.id === filename.slice(6) ? data.item : entry));
+        else setEntries(current => current.map(entry => entry.filename === filename ? data.item : entry));
         setDrafts(current => { const next = { ...current }; delete next[filename]; return next; });
         saved++;
       } catch (error) { failures[filename] = error.message; }
     }
     setSaveErrors(failures);
     setSavingAll(false);
-    setMessage(Object.keys(failures).length ? `${saved} saved. Unsaved entries are kept below; fix any errors and retry Save all.` : `Saved all changes (${saved} ${saved === 1 ? "artwork" : "artworks"}).`);
+    setMessage(Object.keys(failures).length ? `${saved} saved. Unsaved entries are kept below; fix any errors and retry Save all.` : `Saved all changes (${saved} ${saved === 1 ? "item" : "items"}).`);
     loadActivity().catch(() => {});
   };
 
@@ -305,9 +334,15 @@ function AdminPage() {
     setActivity(data.items || []);
   }, []);
 
+  const loadEmojis = useCallback(async () => {
+    const response = await fetch(apiUrl("/api/admin/emojis"), { credentials: "include" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to load emojis");
+    setEmojis(data.items || []);
+  }, []);
   const loadDashboard = useCallback(async () => {
-    await Promise.all([loadEntries(), loadActivity()]);
-  }, [loadActivity, loadEntries]);
+    await Promise.all([loadEntries(), loadActivity(), loadEmojis()]);
+  }, [loadActivity, loadEntries, loadEmojis]);
 
   useEffect(() => {
     let active = true;
@@ -353,6 +388,7 @@ function AdminPage() {
       if (!response.ok) throw new Error(data.error || "Unable to sign out.");
       setUser(null);
       setEntries([]);
+      setEmojis([]);
       setDrafts({});
       setSaveErrors({});
       setActivity([]);
@@ -434,7 +470,7 @@ function AdminPage() {
           <div><strong>{user.displayName || user.username}</strong><span>@{user.username}</span></div>
         </div>
         <p className="admin-eyebrow">thesxber.com / v2</p>
-        <h1>Fanart admin</h1>
+        <h1>Site admin</h1>
         <p className="admin-copy">You are signed in with Discord. Uploads, edits, and removals are recorded in the activity ledger, and the restricted fanart commands use the same audit trail.</p>
         <form className="admin-form" onSubmit={upload}>
           <fieldset className="admin-upload-fields" disabled={savingAll}>
@@ -462,6 +498,9 @@ function AdminPage() {
             />
           ))}
         </div>
+        <EmojiAdminSection items={emojis} drafts={drafts} errors={saveErrors} busy={savingAll}
+          onChange={changeEmoji} onRemove={removeEmoji}
+          onUploaded={item => { setEmojis(current => [...current, item]); loadActivity().catch(() => {}); }} />
         <section className="admin-ledger" aria-labelledby="activity-title">
           <div className="admin-ledger-heading"><h2 id="activity-title">Activity ledger</h2><button type="button" disabled={savingAll} onClick={() => loadActivity().catch((error) => setMessage(error.message))}>Refresh</button></div>
           {activity.length ? (
@@ -474,8 +513,9 @@ function AdminPage() {
           ) : <p className="admin-empty">No activity has been recorded yet.</p>}
         </section>
       </section>
-      {(dirtyCount > 0 || savingAll) && <div className="admin-save-dock" role="region" aria-label="Unsaved fanart changes">
-        <span aria-live="polite">{savingAll ? "Saving changes…" : `${dirtyCount} ${dirtyCount === 1 ? "artwork" : "artworks"} changed`}</span>
+      <SiteCredit />
+      {(dirtyCount > 0 || savingAll) && <div className="admin-save-dock" role="region" aria-label="Unsaved changes">
+        <span aria-live="polite">{savingAll ? "Saving changes…" : `${dirtyCount} ${dirtyCount === 1 ? "item" : "items"} changed`}</span>
         {Object.keys(saveErrors).length > 0 && <small role="alert">Some changes could not save. Check the marked entries and retry.</small>}
         {Object.values(saveErrors).some(error => error.includes("login has expired")) && <a href={apiUrl("/api/auth/discord")} target="_blank" rel="noreferrer">Sign in again in a new tab, then retry</a>}
         <button type="button" onClick={saveAll} disabled={savingAll}>{savingAll ? "Saving…" : "Save all"}</button>
@@ -487,6 +527,6 @@ function AdminPage() {
 export default function App() {
   const route = window.location.pathname.replace(/\/$/, "");
   if (route === "/admin") return <AdminPage />;
-  if (route === "/fanart") return <FanartPage />;
-  return <Site />;
+  if (route === "/fanart") return <PublicAtmosphere gallery><FanartPage /></PublicAtmosphere>;
+  return <PublicAtmosphere><Site /></PublicAtmosphere>;
 }

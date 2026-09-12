@@ -1,3 +1,4 @@
+import SiteCredit from "./SiteCredit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import FanartTile from "./FanartTile";
 import MarkdownText from "./MarkdownText";
@@ -114,6 +115,7 @@ export default function FanartPage() {
           {entries.map((entry, index) => <FanartTile key={entry.filename} entry={entry} onOpenLightbox={() => setSelected(index)} />)}
         </div>
         {entries.length > 0 && <footer className="fanart-footer">{entries.length} {entries.length === 1 ? "piece" : "pieces"} of fanart <span aria-hidden="true">·</span> Thank you for creating ♥</footer>}
+        <SiteCredit />
       </main>
       {selected !== null && entries[selected] && <ArtworkViewer entries={entries} selected={selected} onSelect={setSelected} onClose={close} />}
     </>

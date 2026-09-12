@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "server": "node server/index.js",
     "start": "node server/index.js",
-    "bot": "node server/discord-bot.js"
+    "bot": "node server/discord-bot.js",
+    "test:emojis": "node --test server/emojis.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
