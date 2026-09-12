@@ -73,7 +73,7 @@ export default function BannerCropEditor({ entry, sourceUrl, onSave, onClose }) 
             style={layout ? { width: `${layout.width / 4 * 100}%`, height: `${layout.height * 100}%`,
               left: `${50 + layout.offsetX / 4 * 100}%`, top: `${50 + layout.offsetY * 100}%` } : { visibility: "hidden" }} />
         </div>
-        <p id="banner-crop-help">Drag to reposition, or focus the image and use the arrow keys. Zoom to frame your banner. Only the embed image is cropped.</p>
+        <p id="banner-crop-help">Drag to reposition, or focus the image and use the arrow keys. Zoom to frame your banner. Use this crop to stage it, then publish it with Save all.</p>
         <label className="banner-crop-zoom">Zoom
           <input type="range" min={1} max={MAX_BANNER_ZOOM} step={0.01} value={crop.zoom} disabled={busy || !source}
             onChange={(event) => update({ ...crop, zoom: Number(event.target.value) })} />
@@ -85,7 +85,7 @@ export default function BannerCropEditor({ entry, sourceUrl, onSave, onClose }) 
         <button type="button" disabled={busy || !source} onClick={() => update(DEFAULT_BANNER_CROP)}>Reset position</button>
         <button type="button" disabled={busy || !source} onClick={() => save(null)}>Use automatic crop</button>
         <div><button type="button" disabled={busy} onClick={onClose}>Cancel</button>
-          <button type="button" className="banner-crop-save" disabled={busy || !source} onClick={() => save(crop)}>{busy ? "Saving…" : "Save crop"}</button></div>
+          <button type="button" className="banner-crop-save" disabled={busy || !source} onClick={() => save(crop)}>{busy ? "Applying…" : "Use this crop"}</button></div>
       </footer>
     </dialog>, document.body
   );

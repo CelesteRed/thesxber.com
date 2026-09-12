@@ -24,14 +24,14 @@ const commands = [
     .setDescription("Upload fanart to thesxber.com")
     .addAttachmentOption((option) => option.setName("file").setDescription("Image to publish").setRequired(true))
     .addStringOption((option) => option.setName("title").setDescription("Optional gallery title").setMaxLength(120))
-    .addStringOption((option) => option.setName("hover").setDescription("Optional Markdown hover tag").setMaxLength(2000)),
+    .addStringOption((option) => option.setName("hover").setDescription("Optional artwork description (100 characters)").setMaxLength(100)),
   new SlashCommandBuilder().setName("fanart-list").setDescription("List published fanart"),
   new SlashCommandBuilder()
     .setName("fanart-edit")
-    .setDescription("Edit a fanart title or Markdown hover tag")
+    .setDescription("Edit a fanart title or artwork description")
     .addStringOption((option) => option.setName("filename").setDescription("Filename, for example fanart50.png").setRequired(true))
     .addStringOption((option) => option.setName("title").setDescription("New gallery title").setMaxLength(120))
-    .addStringOption((option) => option.setName("hover").setDescription("New Markdown hover tag").setMaxLength(2000)),
+    .addStringOption((option) => option.setName("hover").setDescription("New artwork description (100 characters)").setMaxLength(100)),
   new SlashCommandBuilder()
     .setName("fanart-remove")
     .setDescription("Remove published fanart")

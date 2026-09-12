@@ -76,6 +76,7 @@ export async function initializeDatabase() {
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS embed_eligible BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS embed_data BYTEA;
       ALTER TABLE fanart ADD COLUMN IF NOT EXISTS embed_crop JSONB;
+      ALTER TABLE fanart ADD COLUMN IF NOT EXISTS credit_url TEXT NOT NULL DEFAULT '';
 
       CREATE TABLE IF NOT EXISTS youtube_videos (
         video_id TEXT PRIMARY KEY,

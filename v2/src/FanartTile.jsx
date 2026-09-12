@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import MarkdownText from "./MarkdownText";
+import ArtworkTitle from "./ArtworkTitle";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const assetUrl = (path) => `${API_BASE}${path}`;
 
@@ -18,12 +18,16 @@ function tooltipPositionFor(element) {
 
 export default function FanartTile({ entry, onOpenLightbox }) {
   const tileRef = useRef(null);
+  const hideTimer = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const tooltipVisible = Boolean(tooltip);
-  const showTooltip = () => setTooltip(tooltipPositionFor(tileRef.current));
-  const hideTooltip = () => setTooltip(null);
+  const showTooltip = () => { clearTimeout(hideTimer.current); setTooltip(tooltipPositionFor(tileRef.current)); };
+  const hideTooltip = () => { clearTimeout(hideTimer.current); setTooltip(null); };
+  const scheduleHide = () => { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => {
+    if (!tileRef.current?.contains(document.activeElement)) setTooltip(null);
+  }, 180); };
   const label = entry.title || `Fanart ${entry.id}`;
-  const hoverText = entry.hoverMarkdown?.trim() || label;
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
 
   useEffect(() => {
     if (!tooltipVisible) return undefined;
@@ -37,23 +41,21 @@ export default function FanartTile({ entry, onOpenLightbox }) {
   }, [tooltipVisible]);
 
   return (
-    <div className="fanart-tile" ref={tileRef}>
+    <div className="fanart-tile" ref={tileRef} onMouseEnter={showTooltip} onMouseLeave={scheduleHide}
+      onFocus={showTooltip} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) hideTooltip(); }}
+      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); hideTooltip(); } }}>
       <button
         className="fanart-tile-button"
         type="button"
         aria-label={label}
         aria-describedby={tooltip ? `fanart-hover-${entry.id}` : undefined}
         onClick={() => { hideTooltip(); onOpenLightbox(entry); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-        onFocus={showTooltip}
-        onBlur={hideTooltip}
       >
         <img src={assetUrl(entry.url)} alt={label} loading="lazy" />
       </button>
       {tooltip && (
-        <div id={`fanart-hover-${entry.id}`} className="fanart-hover-tag" data-placement={tooltip.placement} role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
-          <MarkdownText value={hoverText} />
+        <div id={`fanart-hover-${entry.id}`} className="fanart-hover-tag" data-placement={tooltip.placement} role="group" aria-label="Artwork credit" style={{ left: tooltip.left, top: tooltip.top }}>
+          <ArtworkTitle entry={entry} />
         </div>
       )}
     </div>

@@ -22,7 +22,7 @@ import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, remov
 import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
-import { getArtworkOfTheHour, HOUR_MS, saveBannerCrop } from "./embed-art.js";
+import { getArtworkOfTheHour, HOUR_MS, saveBannerCrop, prepareBannerCrop } from "./embed-art.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -195,7 +195,8 @@ app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (reques
     const item = await saveFanartBuffer(request.file.buffer, {
       extension: extensionFromUpload(request.file),
       title: request.body.title || "",
-      hoverMarkdown: request.body.hoverMarkdown || ""
+      hoverMarkdown: request.body.hoverMarkdown || "",
+      creditUrl: request.body.creditUrl || ""
     });
     await recordAdminActivity(request, {
       action: "fanart.upload",
@@ -210,12 +211,16 @@ app.post("/api/admin/fanart", requireAdmin, upload.single("file"), async (reques
 });
 
 app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response) => {
+  response.set("Cache-Control", "no-store");
   try {
+    const hasCrop = Object.hasOwn(request.body || {}, "embedCrop");
+    const preparedEmbed = hasCrop ? await prepareBannerCrop(request.params.filename, request.body.embedCrop) : undefined;
     const item = await updateFanartMetadata(request.params.filename, {
       title: request.body?.title,
       hoverMarkdown: request.body?.hoverMarkdown,
-      embedEligible: request.body?.embedEligible
-    });
+      embedEligible: request.body?.embedEligible,
+      creditUrl: request.body?.creditUrl
+    }, preparedEmbed);
     await recordAdminActivity(request, {
       action: "fanart.update",
       resourceType: "fanart",
@@ -224,9 +229,12 @@ app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response)
         fields: [
           request.body?.title !== undefined ? "title" : null,
           request.body?.hoverMarkdown !== undefined ? "hoverMarkdown" : null,
-          request.body?.embedEligible !== undefined ? "embedEligible" : null
+          request.body?.embedEligible !== undefined ? "embedEligible" : null,
+          request.body?.creditUrl !== undefined ? "creditUrl" : null,
+          hasCrop ? "embedCrop" : null
         ].filter(Boolean),
-        ...(request.body?.embedEligible !== undefined ? { embedEligible: item.embedEligible } : {})
+        ...(request.body?.embedEligible !== undefined ? { embedEligible: item.embedEligible } : {}),
+        ...(hasCrop ? { crop: item.embedCrop, mode: item.embedCrop ? "manual" : "automatic" } : {})
       }
     });
     response.json({ item });

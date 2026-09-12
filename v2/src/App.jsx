@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import FanartPage from "./FanartPage";
 import BannerCropEditor from "./BannerCropEditor";
+import { updateFanartDraft } from "./fanart-drafts.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -171,71 +172,30 @@ function EmailModal({ onClose }) {
   );
 }
 
-function FanartAdminRow({ entry, onRemove, onSaved }) {
+function FanartAdminRow({ entry, draft = {}, onChange, onRemove, busy, error }) {
   const [cropOpen, setCropOpen] = useState(false);
-  const [title, setTitle] = useState(entry.title || "");
-  const [hoverMarkdown, setHoverMarkdown] = useState(entry.hoverMarkdown || "");
-  const [embedEligible, setEmbedEligible] = useState(entry.embedEligible === true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setTitle(entry.title || "");
-    setHoverMarkdown(entry.hoverMarkdown || "");
-    setEmbedEligible(entry.embedEligible === true);
-  }, [entry.title, entry.hoverMarkdown, entry.embedEligible]);
-
-  const save = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, hoverMarkdown, embedEligible })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
-      if (!response.ok) throw new Error(data.error || "Unable to save fanart details.");
-      onSaved(data.item);
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  const value = { ...entry, ...draft };
+  const dirty = Object.keys(draft).length > 0;
   return (
-    <div className="admin-list-row">
-      {cropOpen && <BannerCropEditor entry={entry}
+    <fieldset className={`admin-list-row${dirty ? " admin-row-dirty" : ""}`} disabled={busy}>
+      {cropOpen && <BannerCropEditor entry={value}
         sourceUrl={`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}/crop-source`}
-        onClose={() => setCropOpen(false)}
-        onSave={async (crop) => {
-          const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}/embed-crop`, {
-            method: "PUT", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ crop })
-          });
-          const data = await response.json().catch(() => ({}));
-          if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
-          if (!response.ok) throw new Error(data.error || "Unable to save banner crop.");
-          onSaved(data.item);
-        }} />}
+        onClose={() => setCropOpen(false)} onSave={(crop) => onChange({ embedCrop: crop })} />}
       <img src={assetUrl(entry.originalUrl || entry.url)} alt="" />
       <div className="admin-list-editor">
-        <strong className="admin-list-filename">{entry.filename}</strong>
-        <label className="admin-embed-toggle"><input type="checkbox" checked={embedEligible} onChange={(event) => setEmbedEligible(event.target.checked)} /> Include in hourly embed rotation</label>
-        <div className="admin-list-actions"><button type="button" onClick={() => setCropOpen(true)} disabled={saving}>Crop embed banner</button>
-          <span className="admin-crop-status">{entry.embedCrop ? "Custom crop saved" : "Automatic crop"}</span></div>
-        <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
-        <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
-        <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
+        <strong className="admin-list-filename">{entry.filename}{dirty && <span className="admin-draft-label">Unsaved</span>}</strong>
+        <label className="admin-embed-toggle"><input type="checkbox" checked={value.embedEligible === true} onChange={(event) => onChange({ embedEligible: event.target.checked })} /> Include in hourly embed rotation</label>
+        <div className="admin-list-actions"><button type="button" onClick={() => setCropOpen(true)}>Crop embed banner</button>
+          <span className="admin-crop-status">{Object.hasOwn(draft, "embedCrop") ? "Crop ready to save" : value.embedCrop ? "Custom crop" : "Automatic crop"}</span></div>
+        <label>Title<input type="text" value={value.title || ""} onChange={(event) => onChange({ title: event.target.value })} maxLength={120} /></label>
+        <label>Description (Markdown)<textarea value={value.hoverMarkdown || ""} onChange={(event) => onChange({ hoverMarkdown: event.target.value })} maxLength={100} placeholder="A short note about the artwork" /></label>
+        <small className="admin-character-count">{(value.hoverMarkdown || "").length}/100</small>
+        <label>Artist credit link<input type="url" value={value.creditUrl || ""} onChange={(event) => onChange({ creditUrl: event.target.value })} maxLength={2048} placeholder="https://x.com/artist" /></label>
+        <p className="admin-markdown-help">The hover shows the title and links to the artist. The description appears when the artwork is opened.</p>
         {error && <p className="admin-row-error" role="alert">{error}</p>}
-        <div className="admin-list-actions">
-          <button type="button" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
-          <button type="button" onClick={() => onRemove(entry.filename)}>Remove</button>
-        </div>
+        <div className="admin-list-actions"><button type="button" onClick={() => onRemove(entry.filename)}>Remove</button></div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -274,11 +234,59 @@ function AdminPage() {
   const [user, setUser] = useState(null);
   const [title, setTitle] = useState("");
   const [hoverMarkdown, setHoverMarkdown] = useState("");
+  const [creditUrl, setCreditUrl] = useState("");
+  const [drafts, setDrafts] = useState({});
+  const [saveErrors, setSaveErrors] = useState({});
+  const [savingAll, setSavingAll] = useState(false);
+  const dirtyCount = Object.keys(drafts).length;
   const [file, setFile] = useState(null);
   const [entries, setEntries] = useState([]);
   const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
   const [message, setMessage] = useState("Checking Discord session…");
+
+  useEffect(() => {
+    if (!dirtyCount) return;
+    const warn = (event) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirtyCount]);
+
+  const changeEntry = (entry, changes) => {
+    setDrafts(current => {
+      const next = { ...current };
+      const draft = updateFanartDraft(entry, current[entry.filename], changes);
+      if (Object.keys(draft).length) next[entry.filename] = draft;
+      else delete next[entry.filename];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[entry.filename]; return next; });
+  };
+
+  const saveAll = async () => {
+    if (savingAll || !dirtyCount) return;
+    setSavingAll(true);
+    setSaveErrors({});
+    const failures = {};
+    let saved = 0;
+    for (const [filename, draft] of Object.entries(drafts)) {
+      try {
+        const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(filename)}`, {
+          method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(draft)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
+        if (!response.ok) throw new Error(data.error || "Unable to save this artwork. Try again.");
+        setEntries(current => current.map(entry => entry.filename === filename ? data.item : entry));
+        setDrafts(current => { const next = { ...current }; delete next[filename]; return next; });
+        saved++;
+      } catch (error) { failures[filename] = error.message; }
+    }
+    setSaveErrors(failures);
+    setSavingAll(false);
+    setMessage(Object.keys(failures).length ? `${saved} saved. Unsaved entries are kept below; fix any errors and retry Save all.` : `Saved all changes (${saved} ${saved === 1 ? "artwork" : "artworks"}).`);
+    loadActivity().catch(() => {});
+  };
 
   const loadEntries = useCallback(async () => {
     const response = await fetch(apiUrl("/api/admin/fanart"), { credentials: "include" });
@@ -291,7 +299,6 @@ function AdminPage() {
     const response = await fetch(apiUrl("/api/admin/activity?limit=100"), { credentials: "include" });
     const data = await response.json().catch(() => ({}));
     if (response.status === 401) {
-      setUser(null);
       throw new Error("Your Discord login has expired. Sign in again.");
     }
     if (!response.ok) throw new Error(data.error || "The activity ledger is unavailable.");
@@ -324,7 +331,7 @@ function AdminPage() {
         setUser(result.user || null);
         if (result.authenticated) {
           loadDashboard().catch((error) => { if (active) setMessage(error.message); });
-          if (callbackMessage) setMessage(callbackMessage);
+          setMessage(callbackMessage || "");
         } else {
           setMessage(callbackMessage || "Sign in with Discord to manage fanart and view the activity ledger.");
         }
@@ -338,6 +345,7 @@ function AdminPage() {
   const login = () => { window.location.assign(apiUrl("/api/auth/discord")); };
 
   const logout = async () => {
+    if (dirtyCount && !window.confirm("Discard unsaved changes and sign out?")) return;
     setMessage("Signing out…");
     try {
       const response = await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
@@ -345,6 +353,8 @@ function AdminPage() {
       if (!response.ok) throw new Error(data.error || "Unable to sign out.");
       setUser(null);
       setEntries([]);
+      setDrafts({});
+      setSaveErrors({});
       setActivity([]);
       setMessage("Signed out.");
     } catch (error) { setMessage(error.message); }
@@ -357,6 +367,7 @@ function AdminPage() {
     formData.append("file", file);
     if (title.trim()) formData.append("title", title.trim());
     if (hoverMarkdown.trim()) formData.append("hoverMarkdown", hoverMarkdown.trim());
+    if (creditUrl.trim()) formData.append("creditUrl", creditUrl.trim());
     setMessage("Uploading…");
     try {
       const response = await fetch(apiUrl("/api/admin/fanart"), { method: "POST", credentials: "include", body: formData });
@@ -366,6 +377,7 @@ function AdminPage() {
       setFile(null);
       setTitle("");
       setHoverMarkdown("");
+      setCreditUrl("");
       event.target.reset();
       setMessage(`Uploaded ${data.item.filename}.`);
       await loadDashboard();
@@ -379,6 +391,8 @@ function AdminPage() {
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) { setUser(null); throw new Error("Your Discord login has expired. Sign in again."); }
       if (!response.ok) throw new Error(data.error || "Remove failed");
+      setDrafts(current => { const next = { ...current }; delete next[filename]; return next; });
+      setSaveErrors(current => { const next = { ...current }; delete next[filename]; return next; });
       setMessage(`Removed ${filename}.`);
       await loadDashboard();
     } catch (error) { setMessage(error.message); }
@@ -413,7 +427,7 @@ function AdminPage() {
       <section className="admin-card">
         <div className="admin-toolbar">
           <a className="admin-back" href="/">← Back to thesxber.com</a>
-          <button className="admin-logout" type="button" onClick={logout}>Sign out</button>
+          <button className="admin-logout" type="button" onClick={logout} disabled={savingAll}>Sign out</button>
         </div>
         <div className="admin-user">
           {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <i className="fa-brands fa-discord" aria-hidden="true" />}
@@ -423,26 +437,33 @@ function AdminPage() {
         <h1>Fanart admin</h1>
         <p className="admin-copy">You are signed in with Discord. Uploads, edits, and removals are recorded in the activity ledger, and the restricted fanart commands use the same audit trail.</p>
         <form className="admin-form" onSubmit={upload}>
+          <fieldset className="admin-upload-fields" disabled={savingAll}>
           <label>Fanart image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
           <label>Optional title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
-          <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
+          <label>Description (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={100} placeholder="A short note about the artwork" /></label>
+          <small className="admin-character-count">{hoverMarkdown.length}/100</small>
+          <label>Artist credit link<input type="url" value={creditUrl} onChange={(event) => setCreditUrl(event.target.value)} maxLength={2048} placeholder="https://x.com/artist" /></label>
           <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>
           <button className="admin-submit" type="submit">Upload fanart</button>
+          </fieldset>
         </form>
         <p className="admin-message" aria-live="polite">{message}</p>
-        <p className="admin-copy">Check the pieces allowed in link previews, then save each entry. The banner rotates every hour and is cropped to 4:1. <a className="admin-back" href={apiUrl("/artoftheday.webp")} target="_blank" rel="noreferrer">View current banner ↗</a></p>
+        <p className="admin-copy">Edit any entries, then use Save all to publish your changes. The banner rotates every hour and is cropped to 4:1. <a className="admin-back" href={apiUrl("/artoftheday.webp")} target="_blank" rel="noreferrer">View current banner ↗</a></p>
         <div className="admin-list">
           {entries.map((entry) => (
             <FanartAdminRow
               key={entry.filename}
               entry={entry}
               onRemove={remove}
-              onSaved={(updated) => setEntries((current) => current.map((item) => item.filename === updated.filename ? updated : item))}
+              draft={drafts[entry.filename]}
+              onChange={(changes) => changeEntry(entry, changes)}
+              busy={savingAll}
+              error={saveErrors[entry.filename]}
             />
           ))}
         </div>
         <section className="admin-ledger" aria-labelledby="activity-title">
-          <div className="admin-ledger-heading"><h2 id="activity-title">Activity ledger</h2><button type="button" onClick={() => loadDashboard().catch((error) => setMessage(error.message))}>Refresh</button></div>
+          <div className="admin-ledger-heading"><h2 id="activity-title">Activity ledger</h2><button type="button" disabled={savingAll} onClick={() => loadActivity().catch((error) => setMessage(error.message))}>Refresh</button></div>
           {activity.length ? (
             <div className="admin-ledger-scroll">
               <table className="admin-ledger-table">
@@ -453,6 +474,12 @@ function AdminPage() {
           ) : <p className="admin-empty">No activity has been recorded yet.</p>}
         </section>
       </section>
+      {(dirtyCount > 0 || savingAll) && <div className="admin-save-dock" role="region" aria-label="Unsaved fanart changes">
+        <span aria-live="polite">{savingAll ? "Saving changes…" : `${dirtyCount} ${dirtyCount === 1 ? "artwork" : "artworks"} changed`}</span>
+        {Object.keys(saveErrors).length > 0 && <small role="alert">Some changes could not save. Check the marked entries and retry.</small>}
+        {Object.values(saveErrors).some(error => error.includes("login has expired")) && <a href={apiUrl("/api/auth/discord")} target="_blank" rel="noreferrer">Sign in again in a new tab, then retry</a>}
+        <button type="button" onClick={saveAll} disabled={savingAll}>{savingAll ? "Saving…" : "Save all"}</button>
+      </div>}
     </main>
   );
 }

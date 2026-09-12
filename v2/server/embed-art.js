@@ -25,7 +25,7 @@ export async function renderBanner(buffer, crop = null) {
   }).webp({ quality: 85 }).toBuffer();
 }
 
-export async function saveBannerCrop(filename, value) {
+export async function prepareBannerCrop(filename, value) {
   let crop = validateBannerCrop(value);
   const image = await getFanartImage(filename, { original: true });
   if (!image) throw new Error("Fanart not found");
@@ -34,7 +34,12 @@ export async function saveBannerCrop(filename, value) {
     const rotated = [5, 6, 7, 8].includes(metadata.orientation);
     crop = clampBannerCrop(rotated ? metadata.height : metadata.width, rotated ? metadata.width : metadata.height, crop);
   }
-  return persistFanartEmbedCrop(filename, crop, await renderBanner(image.buffer, crop));
+  return { crop, buffer: await renderBanner(image.buffer, crop) };
+}
+
+export async function saveBannerCrop(filename, value) {
+  const { crop, buffer } = await prepareBannerCrop(filename, value);
+  return persistFanartEmbedCrop(filename, crop, buffer);
 }
 
 async function cropArtwork(filename, crop) {

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import sharp from "sharp";
+import { normalizeDescription, normalizeCreditUrl } from "./fanart-fields.js";
 import { createHash } from "node:crypto";
 import { isDatabaseReady, query } from "./db.js";
 
@@ -20,7 +21,6 @@ const mimeByExtension = {
   ".gif": "image/gif"
 };
 const maxTitleLength = 120;
-const maxHoverMarkdownLength = 2000;
 const configuredWebpQuality = Number(process.env.WEBP_QUALITY || 82);
 const webpQuality = Number.isFinite(configuredWebpQuality)
   ? Math.min(100, Math.max(1, Math.round(configuredWebpQuality)))
@@ -31,7 +31,7 @@ function normalizeTitle(value) {
 }
 
 function normalizeHoverMarkdown(value) {
-  return String(value || "").trim().slice(0, maxHoverMarkdownLength);
+  return normalizeDescription(value);
 }
 
 function resolveFromProject(value, fallback) {
@@ -113,6 +113,7 @@ async function getFilesystemEntries() {
     originalUrl: `/fanart/${encodeURIComponent(filename)}?original=1`,
     title: metadata[filename]?.title || `Fanart ${index}`,
     hoverMarkdown: metadata[filename]?.hoverMarkdown || "",
+    creditUrl: metadata[filename]?.creditUrl || "",
     embedEligible: metadata[filename]?.embedEligible === true,
     embedCrop: metadata[filename]?.embedCrop || null,
     uploadedAt: metadata[filename]?.uploadedAt || null
@@ -128,6 +129,7 @@ function formatDatabaseEntry(row) {
     originalUrl: `/fanart/${encodedFilename}?original=1`,
     title: row.title || `Fanart ${row.id}`,
     hoverMarkdown: row.hover_markdown || "",
+    creditUrl: row.credit_url || "",
     embedEligible: row.embed_eligible === true,
     embedCrop: row.embed_crop || null,
     uploadedAt: row.uploaded_at || null
@@ -144,10 +146,10 @@ export async function seedFanartFromDisk() {
     const buffer = await fs.readFile(path.join(fanartDir, file.filename));
     const webpBuffer = await convertToWebp(buffer, file.extension);
     await query(
-      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data, credit_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (filename) DO NOTHING`,
-      [file.filename, `Fanart ${file.index}`, "", mimeByExtension[file.extension], buffer, webpBuffer]
+      [file.filename, `Fanart ${file.index}`, "", mimeByExtension[file.extension], buffer, webpBuffer, ""]
     );
     seeded += 1;
   }
@@ -157,7 +159,7 @@ export async function seedFanartFromDisk() {
 export async function getFanartEntries({ includePrivate = false } = {}) {
   const visible = (entries) => includePrivate ? entries : entries.map(({ embedEligible, embedCrop, ...entry }) => entry);
   if (isDatabaseReady()) {
-    const result = await query("SELECT id, filename, title, hover_markdown, embed_eligible, embed_crop, uploaded_at FROM fanart ORDER BY id");
+    const result = await query("SELECT id, filename, title, hover_markdown, embed_eligible, embed_crop, credit_url, uploaded_at FROM fanart ORDER BY id");
     return visible(result.rows.map(formatDatabaseEntry));
   }
   return visible(await getFilesystemEntries());
@@ -227,74 +229,79 @@ async function nextFanartIndex() {
   return entries.reduce((highest, entry) => Math.max(highest, entry.id), 0) + 1;
 }
 
-export async function saveFanartBuffer(buffer, { extension, title = "", hoverMarkdown = "" } = {}) {
+export async function saveFanartBuffer(buffer, { extension, title = "", hoverMarkdown = "", creditUrl = "" } = {}) {
   if (!extension) throw new Error("Unsupported image type");
   const normalizedExtension = extension.toLowerCase().startsWith(".") ? extension.toLowerCase() : `.${extension.toLowerCase()}`;
   if (!supportedExtensions.has(normalizedExtension)) throw new Error("Unsupported image type");
   const filename = `fanart${await nextFanartIndex()}${normalizedExtension}`;
   const normalizedTitle = normalizeTitle(title);
   const normalizedHoverMarkdown = normalizeHoverMarkdown(hoverMarkdown);
+  const normalizedCreditUrl = normalizeCreditUrl(creditUrl);
   const webpBuffer = await convertToWebp(buffer, normalizedExtension);
 
   if (isDatabaseReady()) {
     const result = await query(
-      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, uploaded_at`,
-      [filename, normalizedTitle, normalizedHoverMarkdown, mimeByExtension[normalizedExtension], buffer, webpBuffer]
+      `INSERT INTO fanart (filename, title, hover_markdown, mime_type, image_data, webp_data, credit_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, credit_url, uploaded_at`,
+      [filename, normalizedTitle, normalizedHoverMarkdown, mimeByExtension[normalizedExtension], buffer, webpBuffer, normalizedCreditUrl]
     );
     return formatDatabaseEntry(result.rows[0]);
   }
 
   await saveOriginalAndWebp(buffer, filename, webpBuffer);
   const metadata = await readMetadata();
-  metadata[filename] = { title: normalizedTitle, hoverMarkdown: normalizedHoverMarkdown, uploadedAt: new Date().toISOString() };
+  metadata[filename] = { title: normalizedTitle, hoverMarkdown: normalizedHoverMarkdown, creditUrl: normalizedCreditUrl, uploadedAt: new Date().toISOString() };
   await writeMetadata(metadata);
   const entries = await getFilesystemEntries();
   return entries.find((entry) => entry.filename === filename);
 }
 
-export async function updateFanartMetadata(filename, { title, hoverMarkdown, embedEligible } = {}) {
+export async function updateFanartMetadata(filename, { title, hoverMarkdown, embedEligible, creditUrl } = {}, preparedEmbed) {
   const safeName = safeFanartFilename(filename);
-  if (!safeName) throw new Error("Invalid fanart filename");
-  const hasTitle = title !== undefined;
-  const hasHoverMarkdown = hoverMarkdown !== undefined;
-  const hasEmbedEligible = embedEligible !== undefined;
-  if (hasEmbedEligible && typeof embedEligible !== "boolean") throw new Error("Embed eligibility must be a boolean");
-  if (!hasTitle && !hasHoverMarkdown && !hasEmbedEligible) throw new Error("Provide a title, hover Markdown or embed eligibility value");
-
+  if (!safeName || safeName !== filename) throw new Error("Invalid fanart filename");
+  const fields = {};
+  if (title !== undefined) fields.title = normalizeTitle(title);
+  if (hoverMarkdown !== undefined) fields.hover_markdown = normalizeHoverMarkdown(hoverMarkdown);
+  if (creditUrl !== undefined) fields.credit_url = normalizeCreditUrl(creditUrl);
+  if (embedEligible !== undefined) {
+    if (typeof embedEligible !== "boolean") throw new Error("Embed eligibility must be a boolean");
+    fields.embed_eligible = embedEligible;
+  }
+  if (preparedEmbed !== undefined) {
+    fields.embed_crop = preparedEmbed.crop;
+    fields.embed_data = preparedEmbed.buffer;
+  }
+  if (!Object.keys(fields).length) throw new Error("Provide fanart details or a banner crop to update");
   if (isDatabaseReady()) {
-    const current = await query("SELECT title, hover_markdown, embed_eligible FROM fanart WHERE filename = $1", [safeName]);
-    if (!current.rows[0]) throw new Error("Fanart not found");
-    const currentRow = current.rows[0];
+    // Column names come only from the fixed fields above. One statement commits the
+    // metadata and rendered crop together without overwriting unspecified fields.
+    const values = Object.values(fields);
+    const assignments = Object.keys(fields).map((column, index) => `${column}=$${index + 1}`);
     const result = await query(
-      `UPDATE fanart
-       SET title = $1, hover_markdown = $2, embed_eligible = $3
-       WHERE filename = $4
-       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, uploaded_at`,
-      [
-        hasTitle ? normalizeTitle(title) : currentRow.title,
-        hasHoverMarkdown ? normalizeHoverMarkdown(hoverMarkdown) : currentRow.hover_markdown,
-        hasEmbedEligible ? embedEligible : currentRow.embed_eligible,
-        safeName
-      ]
+      `UPDATE fanart SET ${assignments.join(", ")} WHERE filename=$${values.length + 1}
+       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, credit_url, uploaded_at`,
+      [...values, safeName]
     );
+    if (!result.rows[0]) throw new Error("Fanart not found");
     return formatDatabaseEntry(result.rows[0]);
   }
-
   await ensureFilesystemStorage();
-  const [entries, metadata] = await Promise.all([getFilesystemEntries(), readMetadata()]);
-  const existing = entries.find((entry) => entry.filename === safeName);
-  if (!existing) throw new Error("Fanart not found");
-  const currentMetadata = metadata[safeName] || {};
-  metadata[safeName] = {
-    ...currentMetadata,
-    title: hasTitle ? normalizeTitle(title) : (currentMetadata.title || existing.title),
-    hoverMarkdown: hasHoverMarkdown ? normalizeHoverMarkdown(hoverMarkdown) : (currentMetadata.hoverMarkdown || ""),
-    embedEligible: hasEmbedEligible ? embedEligible : currentMetadata.embedEligible === true
-  };
+  const entries = await getFilesystemEntries();
+  if (!entries.some(entry => entry.filename === safeName)) throw new Error("Fanart not found");
+  if (preparedEmbed !== undefined) {
+    await ensureWebpCacheStorage();
+    await fs.writeFile(embedCachePath(safeName, preparedEmbed.crop), preparedEmbed.buffer);
+  }
+  const metadata = await readMetadata();
+  const next = { ...metadata[safeName] };
+  const names = { title: "title", hover_markdown: "hoverMarkdown", credit_url: "creditUrl", embed_eligible: "embedEligible", embed_crop: "embedCrop" };
+  for (const [field, name] of Object.entries(names)) {
+    if (Object.hasOwn(fields, field)) next[name] = fields[field];
+  }
+  metadata[safeName] = next;
   await writeMetadata(metadata);
-  return (await getFilesystemEntries()).find((entry) => entry.filename === safeName);
+  return (await getFilesystemEntries()).find(entry => entry.filename === safeName);
 }
 
 export function embedCachePath(filename, crop = null) {
@@ -308,7 +315,7 @@ export async function persistFanartEmbedCrop(filename, crop, buffer) {
   if (isDatabaseReady()) {
     const result = await query(
       `UPDATE fanart SET embed_crop=$1, embed_data=$2 WHERE filename=$3
-       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, uploaded_at`,
+       RETURNING id, filename, title, hover_markdown, embed_eligible, embed_crop, credit_url, uploaded_at`,
       [crop, buffer, safeName]
     );
     if (!result.rows[0]) throw new Error("Fanart not found");

@@ -30,6 +30,15 @@ test("approved-only hourly banners, private flags, crop cache and API", async ()
     const bottom = await sharp({ create: { width: 80, height: 80, channels: 4, background: "blue" } }).png().toBuffer();
     const original = await sharp({ create: { width: 80, height: 160, channels: 4, background: "red" } })
       .composite([{ input: bottom, top: 80, left: 0 }]).png().toBuffer();
+    if (db.isDatabaseReady()) {
+      await fs.mkdir(art.fanartDir, { recursive: true });
+      const seedFile = path.join(art.fanartDir, "fanart9999.png");
+      await fs.writeFile(seedFile, original);
+      assert.equal(await art.seedFanartFromDisk(), 1);
+      assert.equal((await art.getFanartEntries())[0].creditUrl, "");
+      await art.removeFanart("fanart9999.png");
+      await fs.rm(seedFile);
+    }
     const first = await art.saveFanartBuffer(original, { extension: ".png", title: "First" });
     created.push(first.filename);
     const second = await art.saveFanartBuffer(original, { extension: ".png", title: "Second" });
@@ -114,6 +123,28 @@ test("approved-only hourly banners, private flags, crop cache and API", async ()
       assert.deepEqual(crops.rows[0].metadata.crop, topCrop);
       assert.equal(crops.rows[2].metadata.mode, "automatic");
     }
+    const patch = async (filename, body) => fetch(`${base}/api/admin/fanart/${filename}`, { method: "PATCH", headers, body: JSON.stringify(body) });
+    const beforeInvalid = (await embed.getArtworkOfTheHour(0)).buffer;
+    const invalid = await patch(first.filename, { title: "Must not save", hoverMarkdown: "x".repeat(101), embedCrop: topCrop });
+    assert.equal(invalid.status, 400);
+    assert.equal((await art.getFanartEntries())[0].title, "Keep my crop", "Invalid description must not partially save the entry");
+    assert.deepEqual((await embed.getArtworkOfTheHour(0)).buffer, beforeInvalid, "Invalid metadata must not commit the crop");
+    for (const creditUrl of ["javascript:alert(1)", "data:text/html,hello", "https://user:password@example.com", "not a url"]) {
+      assert.equal((await patch(first.filename, { creditUrl })).status, 400);
+    }
+    const saved = await patch(first.filename, { title: "Artist credit", hoverMarkdown: "x".repeat(100), creditUrl: " https://x.com/artist ", embedCrop: topCrop, embedEligible: true });
+    assert.equal(saved.status, 200);
+    const savedItem = (await saved.json()).item;
+    assert.equal(savedItem.creditUrl, "https://x.com/artist");
+    assert.equal(savedItem.hoverMarkdown.length, 100);
+    assert.deepEqual(savedItem.embedCrop, topCrop);
+    assert.equal((await art.getFanartEntries())[0].creditUrl, savedItem.creditUrl, "Credit links reach the public gallery");
+    await patch(first.filename, { title: "Changed title only" });
+    const retained = (await art.getFanartEntries({ includePrivate: true }))[0];
+    assert.equal(retained.creditUrl, savedItem.creditUrl);
+    assert.deepEqual(retained.embedCrop, topCrop, "Partial edits retain crop and credit");
+    assert.equal((await patch(second.filename, { hoverMarkdown: "Second description", creditUrl: "https://example.com/artist" })).status, 200);
+    await assert.rejects(art.saveFanartBuffer(original, { extension: ".png", hoverMarkdown: "x".repeat(101) }), /100/);
     const update = await fetch(`${base}/api/admin/fanart/${first.filename}`, { method: "PATCH", headers, body: JSON.stringify({ embedEligible: false }) });
     assert.equal(update.status, 200);
     assert.equal((await embed.getArtworkOfTheHour(0)).filename, second.filename, "Unchecking immediately removes a candidate");
@@ -123,7 +154,8 @@ test("approved-only hourly banners, private flags, crop cache and API", async ()
     assert.equal((await fetch(`${base}/artoftheday.webp`)).status, 404);
     if (db.isDatabaseReady()) {
       const ledger = await db.query("SELECT metadata FROM admin_activity WHERE action='fanart.update' AND id > $1 ORDER BY id", [ledgerStart]);
-      assert.equal(ledger.rows[0].metadata.embedEligible, false);
+      assert.equal(ledger.rows.at(-1).metadata.embedEligible, false);
+      assert.ok(ledger.rows.some(row => row.metadata.fields.includes("embedCrop") && row.metadata.fields.includes("creditUrl")), "Combined edits are audited");
     }
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
@@ -148,4 +180,17 @@ test("crop geometry stays inside portrait and landscape sources, including EXIF 
   const rotated = await sharp(source).rotate().png().toBuffer();
   const crop = { offsetX: 0, offsetY: 1, zoom: 2 };
   assert.deepEqual(await renderBanner(source, crop), await renderBanner(rotated, crop));
+});
+
+test("drafts track mixed edits, reversions and crop resets without redundant writes", async () => {
+  const { updateFanartDraft } = await import("../src/fanart-drafts.js");
+  const entry = { title: "Artist", embedEligible: false, embedCrop: { zoom: 2, offsetY: 0, offsetX: 0 } };
+  let draft = updateFanartDraft(entry, {}, { embedEligible: true });
+  draft = updateFanartDraft(entry, draft, { title: "New artist", embedCrop: null });
+  assert.deepEqual(draft, { embedEligible: true, title: "New artist", embedCrop: null });
+  draft = updateFanartDraft(entry, draft, { title: "Artist", embedEligible: false });
+  assert.deepEqual(draft, { embedCrop: null });
+  draft = updateFanartDraft(entry, draft, { embedCrop: { offsetX: 0, offsetY: 0, zoom: 2 } });
+  assert.deepEqual(draft, {});
+  assert.deepEqual(updateFanartDraft({}, {}, { creditUrl: "", embedCrop: null, embedEligible: false }), {});
 });

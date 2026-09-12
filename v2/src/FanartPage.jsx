@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import FanartTile from "./FanartTile";
 import MarkdownText from "./MarkdownText";
+import ArtworkTitle from "./ArtworkTitle";
 import { staticFanart } from "./fanartManifest";
 import "./fanart-page.css";
 
@@ -21,7 +22,6 @@ function ArtworkViewer({ entries, selected, onSelect, onClose }) {
   const dialogRef = useRef(null);
   const touchStart = useRef(null);
   const entry = entries[selected];
-  const title = entry.title || `Fanart ${entry.id}`;
   const move = (direction) => onSelect((selected + direction + entries.length) % entries.length);
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function ArtworkViewer({ entries, selected, onSelect, onClose }) {
         <ArtworkImage key={entry.filename} entry={entry} />
         <figcaption className="artwork-caption" aria-live="polite">
           <p className="artwork-position">{selected + 1} / {entries.length}</p>
-          <h2 id="artwork-title">{title}</h2>
+          <h2 id="artwork-title"><ArtworkTitle entry={entry} /></h2>
           {entry.hoverMarkdown?.trim() && <div id="artwork-notes"><MarkdownText value={entry.hoverMarkdown} /></div>}
         </figcaption>
       </figure>
