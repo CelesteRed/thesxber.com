@@ -148,6 +148,32 @@ body { display: flex; justify-content: center; align-items: center; }
 .admin-ledger-user { display: grid; gap: 2px; }
 .admin-ledger-user small { font-size: 10px; opacity: 0.65; }
 .admin-empty { margin-top: 12px; opacity: 0.75; }
+.admin-crop-status { align-self: center; font-size: 12px; }
+.banner-crop-dialog { margin: auto; width: min(94vw, 900px); max-height: 92dvh; overflow-y: auto; padding: 0; border: 2px solid #235227; border-radius: 14px; color: #1a421d; background: #eef7ec; box-shadow: 0 20px 80px #0006; }
+.banner-crop-dialog::backdrop { background: #0a160dde; }
+.banner-crop-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid #23522733; }
+.banner-crop-header h2 { font-size: 22px; }
+.banner-crop-header p { margin-top: 5px; font-size: 12px; overflow-wrap: anywhere; }
+.banner-crop-dialog button { border: 1px solid #235227; border-radius: 6px; padding: 10px 14px; background: transparent; color: #235227; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.banner-crop-dialog button:disabled { opacity: 0.5; cursor: default; }
+.banner-crop-dialog :focus-visible { outline: 3px solid #398b45; outline-offset: 3px; }
+.banner-crop-body { padding: 24px; }
+.banner-crop-frame { position: relative; width: 100%; aspect-ratio: 4 / 1; overflow: hidden; background: #142618; touch-action: none; user-select: none; cursor: grab; box-shadow: 0 0 0 1px #235227; }
+.banner-crop-frame:active { cursor: grabbing; }
+.banner-crop-frame img { position: absolute; max-width: none; transform: translate(-50%, -50%); pointer-events: none; user-select: none; }
+.banner-crop-frame span { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 13px; }
+.banner-crop-body > p { font-size: 13px; line-height: 1.6; margin-top: 14px; }
+.banner-crop-zoom { margin: 22px auto 0; max-width: 540px; display: flex; align-items: center; gap: 16px; font-size: 13px; font-weight: 700; }
+.banner-crop-zoom input { min-width: 0; flex: 1; accent-color: #235227; }
+.banner-crop-zoom output { min-width: 44px; text-align: right; }
+.banner-crop-error { color: #8d1e1e; }
+.banner-crop-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 18px 24px; border-top: 1px solid #23522733; }
+.banner-crop-actions > div { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+.banner-crop-actions .banner-crop-save { background: #235227; color: #fff; }
+@media (max-width: 500px) {
+  .banner-crop-header, .banner-crop-body, .banner-crop-actions { padding: 16px; }
+  .banner-crop-actions > div { width: 100%; justify-content: flex-end; }
+}
 
 @media (max-width: 768px) {
   .switch-screen { padding: 12px 12px 8px 12px; }

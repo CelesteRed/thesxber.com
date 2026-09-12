@@ -67,3 +67,9 @@ npm start
 ```
 
 Run this Node process alongside PostgreSQL, or use Docker Compose. Keep `.env` outside version control. For an existing database, set `DATABASE_URL`; set `DATABASE_SSL=true` when your provider requires TLS. The filesystem `FANART_DIR` is only a seed/fallback path when no database URL is configured, and `FANART_WEBP_DIR` controls its generated WebP cache.
+
+## Manual embed crops
+
+Each admin fanart entry has a **Crop embed banner** button. The editor follows Cosmiq's profile banner interaction: drag the image inside a fixed 4:1 frame, zoom from 100% to 300%, reset the position, then **Save crop**. Arrow keys move the image (Shift moves faster); Escape or Cancel closes without saving. Reopening restores the saved position. **Use automatic crop** immediately restores automatic framing. Saving a crop does not change whether the artwork is checked for hourly rotation.
+
+The protected `PUT /api/admin/fanart/:filename/embed-crop` accepts `{ "crop": { "offsetX": 0, "offsetY": 0, "zoom": 1 } }`, or `{ "crop": null }` for automatic framing. Offsets use frame-height units. The server validates and clamps the geometry, renders a 1200 × 300 WebP from the original, and stores private `embed_crop` metadata with the separate cached banner. Original images and gallery WebP files remain unchanged. `GET /api/admin/fanart/:filename/crop-source` returns an oriented, static PNG for accurate editing of EXIF and animated sources. Both routes require admin authentication; crop changes are recorded as `fanart.crop` in the activity ledger. Public listings exclude crop settings.

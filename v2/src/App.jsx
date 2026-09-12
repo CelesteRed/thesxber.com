@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import FanartPage from "./FanartPage";
+import BannerCropEditor from "./BannerCropEditor";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -171,6 +172,7 @@ function EmailModal({ onClose }) {
 }
 
 function FanartAdminRow({ entry, onRemove, onSaved }) {
+  const [cropOpen, setCropOpen] = useState(false);
   const [title, setTitle] = useState(entry.title || "");
   const [hoverMarkdown, setHoverMarkdown] = useState(entry.hoverMarkdown || "");
   const [embedEligible, setEmbedEligible] = useState(entry.embedEligible === true);
@@ -206,10 +208,24 @@ function FanartAdminRow({ entry, onRemove, onSaved }) {
 
   return (
     <div className="admin-list-row">
+      {cropOpen && <BannerCropEditor entry={entry}
+        sourceUrl={`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}/crop-source`}
+        onClose={() => setCropOpen(false)}
+        onSave={async (crop) => {
+          const response = await fetch(`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}/embed-crop`, {
+            method: "PUT", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ crop })
+          });
+          const data = await response.json().catch(() => ({}));
+          if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
+          if (!response.ok) throw new Error(data.error || "Unable to save banner crop.");
+          onSaved(data.item);
+        }} />}
       <img src={assetUrl(entry.originalUrl || entry.url)} alt="" />
       <div className="admin-list-editor">
         <strong className="admin-list-filename">{entry.filename}</strong>
         <label className="admin-embed-toggle"><input type="checkbox" checked={embedEligible} onChange={(event) => setEmbedEligible(event.target.checked)} /> Include in hourly embed rotation</label>
+        <div className="admin-list-actions"><button type="button" onClick={() => setCropOpen(true)} disabled={saving}>Crop embed banner</button>
+          <span className="admin-crop-status">{entry.embedCrop ? "Custom crop saved" : "Automatic crop"}</span></div>
         <label>Title<input type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} /></label>
         <label>Hover & artwork notes (Markdown)<textarea value={hoverMarkdown} onChange={(event) => setHoverMarkdown(event.target.value)} maxLength={2000} placeholder="**Artist name**\n*Optional note*" /></label>
         <p className="admin-markdown-help">Supports **bold**, *italic*, ~~strike~~, `code`, and __underline__.</p>

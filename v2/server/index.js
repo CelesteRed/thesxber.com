@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import multer from "multer";
+import sharp from "sharp";
 import {
   completeDiscordLogin,
   destroyAdminSession,
@@ -21,7 +22,7 @@ import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, remov
 import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
-import { getArtworkOfTheHour, HOUR_MS } from "./embed-art.js";
+import { getArtworkOfTheHour, HOUR_MS, saveBannerCrop } from "./embed-art.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -231,6 +232,32 @@ app.patch("/api/admin/fanart/:filename", requireAdmin, async (request, response)
     response.json({ item });
   } catch (error) {
     response.status(400).json({ error: error.message || "Unable to update fanart" });
+  }
+});
+
+app.get("/api/admin/fanart/:filename/crop-source", requireAdmin, async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    const image = await getFanartImage(request.params.filename, { original: true });
+    if (!image) return response.status(404).send("Fanart not found");
+    // A static, oriented source keeps animated/EXIF images identical to the saved crop.
+    response.type("png").send(await sharp(image.buffer).rotate().png().toBuffer());
+  } catch {
+    response.status(400).send("Unable to prepare crop preview");
+  }
+});
+
+app.put("/api/admin/fanart/:filename/embed-crop", requireAdmin, async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    const item = await saveBannerCrop(request.params.filename, request.body?.crop);
+    await recordAdminActivity(request, {
+      action: "fanart.crop", resourceType: "fanart", resourceId: item.filename,
+      metadata: { crop: item.embedCrop, mode: item.embedCrop ? "manual" : "automatic" }
+    });
+    response.json({ item });
+  } catch (error) {
+    response.status(400).json({ error: error.message || "Unable to save banner crop" });
   }
 });
 
