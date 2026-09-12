@@ -28,4 +28,4 @@ Use `v2/.env.example` as a configuration template and keep your actual `v2/.env`
 
 The admin panel has a **Floating emojis** section for images, random quotes, held quotes, optional fanart-page quotes, click links, and visibility. Use the same floating **Save all** button for emoji and fanart edits. See the [floating emoji guide](v2/FLOATING-EMOJIS.md) for controls, storage, and API details.
 
-The public footer credits [made by @celestered](https://github.com/CelesteRed).
+The public footer reads made by [@celeste](https://github.com/CelesteRed) & [@bogged](https://youtube.com/@itzbogged), with separate links for each creator.

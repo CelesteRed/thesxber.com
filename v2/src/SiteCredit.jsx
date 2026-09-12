@@ -36,7 +36,7 @@ export function PublicAtmosphere({ children, gallery = false }) {
 }
 export default function SiteCredit() {
   const motion = useContext(MotionContext);
-  return <div className="site-credit"><a href="https://github.com/CelesteRed" target="_blank" rel="noreferrer">made by @celestered</a>
+  return <div className="site-credit"><span>made by <a href="https://github.com/CelesteRed" target="_blank" rel="noreferrer">@celeste</a> &amp; <a href="https://youtube.com/@itzbogged" target="_blank" rel="noreferrer">@bogged</a></span>
     {motion?.available && <button type="button" onClick={motion.toggle} aria-pressed={motion.visible}>{motion.visible ? "Hide emojis" : "Show emojis"}</button>}
   </div>;
 }

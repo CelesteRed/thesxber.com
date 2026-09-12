@@ -27,7 +27,7 @@ Uploads accept PNG, JPEG, GIF, and WebP up to 3 MB, 4096px per side, and 100 fra
 
 The effect runs on the home page and `/fanart`, using the saved default count as its maximum, with a lower count on slower devices. Reduced-motion preferences and a visitor’s Hide emojis choice still take precedence. Idle quotes appear every 5–15 seconds and last 2–4 seconds. Individual emojis live for 10–60 seconds, with a short fade-in and four-second fade-out. Proximity and grabbing pause their lifespan before fading. Touch supports dragging and throwing without mouse proximity slowdown.
 
-The effect pauses in background tabs and hides while site dialogs are open. It never runs on `/admin`. Reduced-motion preferences disable it by default. Visitors can use **Hide emojis / Show emojis** beside the footer credit; that choice is remembered for the browser tab's session. The footer reads **made by @celestered** and links to `https://github.com/CelesteRed`.
+The effect pauses in background tabs and hides while site dialogs are open. It never runs on `/admin`. Reduced-motion preferences disable it by default. Visitors can use **Hide emojis / Show emojis** beside the footer credit; that choice is remembered for the browser tab's session. The footer reads **made by @celeste & @bogged**. Each name links separately: [@celeste](https://github.com/CelesteRed) to GitHub and [@bogged](https://youtube.com/@itzbogged) to YouTube.
 
 ## Backend and deployment
 
