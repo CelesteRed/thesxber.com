@@ -1,3 +1,4 @@
+import AdminSection from "./AdminSection";
 import { useState } from "react";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 export function updateEmojiDraft(entry, draft, changes) {
@@ -18,29 +19,33 @@ export default function EmojiAdminSection({ items, settings, drafts, errors, bus
     } catch (error) { setMessage(error.message); }
     finally { setUploading(false); }
   }
-  return <section className="admin-emojis" aria-labelledby="emoji-title">
-    <h2 id="emoji-title">Floating emojis</h2>
+  const sectionKeys = ["emoji-settings", ...items.map(entry => `emoji:${entry.id}`)];
+  return <AdminSection title="Floating emojis" count={items.length}
+    dirty={sectionKeys.filter(key => drafts[key]).length} errors={sectionKeys.filter(key => errors[key]).length}>
+    <div className="emoji-admin-tools">
     <fieldset className="emoji-controller admin-list-editor" disabled={busy || !settings}>
       <legend>Emoji controller</legend>
       <label>Default emoji count<input type="number" min={0} max={30} step={1}
         value={drafts["emoji-settings"]?.count ?? settings?.count ?? ""}
         onChange={event => onSettingsChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>
-      <small>0–30 emojis on visitors’ home and fanart pages. Set 0 to turn them off. Save all publishes this default for subsequent page loads. Visitors can still hide emojis, and slower devices may show fewer.</small>
+      <small>0–30 emojis on visitors’ home and fanart pages. Set 0 to start with none. Save all publishes this default for subsequent page loads. Visitors can choose their own count from 0–100; slower devices may show fewer.</small>
       {errors["emoji-settings"] && <p className="admin-row-error" role="alert">{errors["emoji-settings"]}</p>}
     </fieldset>
-    <p className="admin-copy">Emojis bounce around the home and fanart pages. Visitors can grab, drag and throw them. Uploads and removals publish immediately; edits use Save all.</p>
+
     <form className="admin-form" onSubmit={upload}><fieldset className="admin-upload-fields" disabled={busy || uploading}>
       <label>Emoji name<input name="name" required maxLength={60} /></label>
       <label>Emoji image<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required /></label>
       <small>PNG, GIF, WebP or JPEG, up to 3 MB. Transparency and animation are preserved; originals stay available here.</small>
       <button className="admin-submit" type="submit">{uploading ? "Uploading…" : "Upload emoji"}</button>
     </fieldset></form>
+    </div>
+    <p className="admin-copy">Uploads and removals publish immediately; edits use Save all.</p>
     <p role="status">{message}</p>
     {!items.length && <p>No emojis yet. Upload the first one to start the floating effect.</p>}
-    <div className="admin-list">{items.map(entry => {
+    <div className="admin-list admin-entry-grid">{items.map(entry => {
       const key = `emoji:${entry.id}`, value = { ...entry, ...drafts[key] };
       return <fieldset className={`admin-list-row emoji-admin-row${drafts[key] ? " admin-row-dirty" : ""}`} key={entry.id} disabled={busy}>
-        <div className="emoji-admin-preview"><img src={`${API_BASE}/api/admin/emojis/${entry.id}/original`} alt={entry.name} />
+        <div className="emoji-admin-preview"><img src={`${API_BASE}/api/admin/emojis/${entry.id}/original`} alt={entry.name} loading="lazy" />
           <a href={`${API_BASE}/api/admin/emojis/${entry.id}/original`} target="_blank" rel="noreferrer">View original ↗</a></div>
         <div className="admin-list-editor">
           <label>Name<input value={value.name} maxLength={60} onChange={e => onChange(entry, { name: e.target.value })} /></label>
@@ -53,5 +58,5 @@ export default function EmojiAdminSection({ items, settings, drafts, errors, bus
         </div>
       </fieldset>;
     })}</div>
-  </section>;
+  </AdminSection>;
 }

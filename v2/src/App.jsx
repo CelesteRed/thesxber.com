@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import SiteCredit, { PublicAtmosphere } from "./SiteCredit";
 import EmojiAdminSection, { updateEmojiDraft } from "./EmojiAdminSection";
+import AdminSection from "./AdminSection";
 import FanartPage from "./FanartPage";
 import BannerCropEditor from "./BannerCropEditor";
 import { updateFanartDraft } from "./fanart-drafts.js";
@@ -132,17 +133,15 @@ function MainCarousel() {
 }
 
 function BottomDock() {
-  const [label, setLabel] = useState("YouTube");
   return (
     <footer className="bottom-dock">
       <div className="social-dock-bar">
         <div className="dock-row">
           {socialLinks.map((link) => (
-            <ExternalIconLink key={link.label} href={link.href} label={link.label} className={`${link.className} dock-btn`} icon={link.icon} onMouseEnter={() => setLabel(link.label)} />
+            <ExternalIconLink key={link.label} href={link.href} label={link.label} className={`${link.className} dock-btn`} icon={link.icon} />
           ))}
         </div>
       </div>
-      <div className="dock-label">{label}</div>
       <SiteCredit />
       <div className="switch-line" />
     </footer>
@@ -184,7 +183,7 @@ function FanartAdminRow({ entry, draft = {}, onChange, onRemove, busy, error }) 
       {cropOpen && <BannerCropEditor entry={value}
         sourceUrl={`${apiUrl("/api/admin/fanart")}/${encodeURIComponent(entry.filename)}/crop-source`}
         onClose={() => setCropOpen(false)} onSave={(crop) => onChange({ embedCrop: crop })} />}
-      <img src={assetUrl(entry.originalUrl || entry.url)} alt="" />
+      <img src={assetUrl(entry.originalUrl || entry.url)} alt="" loading="lazy" />
       <div className="admin-list-editor">
         <strong className="admin-list-filename">{entry.filename}{dirty && <span className="admin-draft-label">Unsaved</span>}</strong>
         <label className="admin-embed-toggle"><input type="checkbox" checked={value.embedEligible === true} onChange={(event) => onChange({ embedEligible: event.target.checked })} /> Include in hourly embed rotation</label>
@@ -474,7 +473,7 @@ function AdminPage() {
 
   return (
     <main className="admin-page">
-      <section className="admin-card">
+      <section className="admin-card admin-dashboard">
         <div className="admin-toolbar">
           <a className="admin-back" href="/">← Back to thesxber.com</a>
           <button className="admin-logout" type="button" onClick={logout} disabled={savingAll}>Sign out</button>
@@ -486,6 +485,9 @@ function AdminPage() {
         <p className="admin-eyebrow">thesxber.com / v2</p>
         <h1>Site admin</h1>
         <p className="admin-copy">You are signed in with Discord. Uploads, edits, and removals are recorded in the activity ledger, and the restricted fanart commands use the same audit trail.</p>
+        <p className="admin-message" aria-live="polite">{message}</p>
+        <div className="admin-sections">
+        <AdminSection title="Upload fanart">
         <form className="admin-form" onSubmit={upload}>
           <fieldset className="admin-upload-fields" disabled={savingAll}>
           <label>Fanart image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
@@ -497,9 +499,12 @@ function AdminPage() {
           <button className="admin-submit" type="submit">Upload fanart</button>
           </fieldset>
         </form>
-        <p className="admin-message" aria-live="polite">{message}</p>
+        </AdminSection>
+        <AdminSection title="Fanart library" count={entries.length}
+          dirty={entries.filter(entry => drafts[entry.filename]).length}
+          errors={entries.filter(entry => saveErrors[entry.filename]).length}>
         <p className="admin-copy">Edit any entries, then use Save all to publish your changes. The banner rotates every hour and is cropped to 4:1. <a className="admin-back" href={apiUrl("/artoftheday.webp")} target="_blank" rel="noreferrer">View current banner ↗</a></p>
-        <div className="admin-list">
+        <div className="admin-list admin-entry-grid">
           {entries.map((entry) => (
             <FanartAdminRow
               key={entry.filename}
@@ -512,11 +517,12 @@ function AdminPage() {
             />
           ))}
         </div>
+        </AdminSection>
         <EmojiAdminSection items={emojis} drafts={drafts} errors={saveErrors} busy={savingAll}
           settings={emojiSettings} onSettingsChange={changeEmojiSettings}
           onChange={changeEmoji} onRemove={removeEmoji}
           onUploaded={item => { setEmojis(current => [...current, item]); loadActivity().catch(() => {}); }} />
-        <section className="admin-ledger" aria-labelledby="activity-title">
+        <AdminSection title="Activity ledger" count={activity.length}>
           <div className="admin-ledger-heading"><h2 id="activity-title">Activity ledger</h2><button type="button" disabled={savingAll} onClick={() => loadActivity().catch((error) => setMessage(error.message))}>Refresh</button></div>
           {activity.length ? (
             <div className="admin-ledger-scroll">
@@ -526,7 +532,8 @@ function AdminPage() {
               </table>
             </div>
           ) : <p className="admin-empty">No activity has been recorded yet.</p>}
-        </section>
+        </AdminSection>
+        </div>
       </section>
       <SiteCredit />
       {(dirtyCount > 0 || savingAll) && <div className="admin-save-dock" role="region" aria-label="Unsaved changes">

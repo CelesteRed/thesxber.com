@@ -29,3 +29,9 @@ Use `v2/.env.example` as a configuration template and keep your actual `v2/.env`
 The admin panel has a **Floating emojis** section for images, random quotes, held quotes, optional fanart-page quotes, click links, and visibility. Use the same floating **Save all** button for emoji and fanart edits. See the [floating emoji guide](v2/FLOATING-EMOJIS.md) for controls, storage, and API details.
 
 The public footer reads made by [@celeste](https://github.com/CelesteRed) & [@bogged](https://youtube.com/@itzbogged), with separate links for each creator.
+
+## Admin workspace
+
+The signed-in admin uses the full browser width. Upload fanart, Fanart library, Floating emojis, and Activity ledger sections start collapsed; click a heading to expand it. Fanart and emoji entries use responsive card grids. Collapsing a section preserves pending edits, and its heading shows unsaved changes or errors. The floating **Save all** button saves across closed and open sections.
+
+Visitors can set their own **Emoji count** from 0–100 using the centered control above the footer credits. New visitors start with the admin default (or zero for reduced motion); a personal count is remembered for that browser tab’s session.

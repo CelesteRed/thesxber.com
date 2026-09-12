@@ -5,7 +5,7 @@ The interaction follows the [sylve.love floating emoji reference](https://github
 ## Managing emojis
 
 1. Open `/admin` and sign in with an allowed Discord account.
-2. At the top of **Floating emojis**, use **Emoji controller → Default emoji count** to choose 0–30 simultaneous emojis (initial default: 10). Set 0 to disable them globally, then click **Save all**. The saved count applies on subsequent home and fanart page loads.
+2. Expand **Floating emojis**. At the top, use **Emoji controller → Default emoji count** to choose 0–30 simultaneous emojis (initial default: 10). Set 0 to start visitors with no emojis, then click **Save all**. The saved count applies on subsequent home and fanart page loads.
 3. Enter a name, choose an image, and click **Upload emoji**. Uploads publish immediately with friendly default quotes.
 4. Edit any combination of emojis and fanart. The floating **Save all** button publishes all pending metadata edits. Failed entries keep their drafts for retry.
 5. Toggle **Show on the site** to enable or disable an emoji. Removing an emoji deletes its stored images and metadata immediately.
@@ -25,9 +25,9 @@ Uploads accept PNG, JPEG, GIF, and WebP up to 3 MB, 4096px per side, and 100 fra
 
 ## Visitor behavior
 
-The effect runs on the home page and `/fanart`, using the saved default count as its maximum, with a lower count on slower devices. Reduced-motion preferences and a visitor’s Hide emojis choice still take precedence. Idle quotes appear every 5–15 seconds and last 2–4 seconds. Individual emojis live for 10–60 seconds, with a short fade-in and four-second fade-out. Proximity and grabbing pause their lifespan before fading. Touch supports dragging and throwing without mouse proximity slowdown.
+The effect runs on the home page and `/fanart`, using the saved admin default on a visitor’s first load. Visitors can choose a personal count from 0 to 100, with a lower count on slower devices. Idle quotes appear every 5–15 seconds and last 2–4 seconds. Individual emojis live for 10–60 seconds, with a short fade-in and four-second fade-out. Proximity and grabbing pause their lifespan before fading. Touch supports dragging and throwing without mouse proximity slowdown.
 
-The effect pauses in background tabs and hides while site dialogs are open. It never runs on `/admin`. Reduced-motion preferences disable it by default. Visitors can use **Hide emojis / Show emojis** beside the footer credit; that choice is remembered for the browser tab's session. The footer reads **made by @celeste & @bogged**. Each name links separately: [@celeste](https://github.com/CelesteRed) to GitHub and [@bogged](https://youtube.com/@itzbogged) to YouTube.
+The effect pauses in background tabs and hides while site dialogs are open. It never runs on `/admin`. Reduced-motion preferences start the count at zero unless the visitor explicitly chooses another count. The centered **Emoji count − number +** control above the footer credits lets visitors choose 0–100; zero removes the effect. A personal choice is remembered for the browser tab’s session and never changes the admin default. The social links no longer have a separate changing text label underneath. The footer reads **made by @celeste & @bogged**. Each name links separately: [@celeste](https://github.com/CelesteRed) to GitHub and [@bogged](https://youtube.com/@itzbogged) to YouTube.
 
 ## Backend and deployment
 

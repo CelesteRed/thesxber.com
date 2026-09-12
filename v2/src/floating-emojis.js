@@ -13,7 +13,7 @@ export function throwVelocity(points) {
 
 // DOM animation stays outside React's render loop. Every listener/frame is disposed.
 export function startFloatingEmojis(layer, items, apiBase, gallery = false, count = 10) {
-  const maximum = Number.isInteger(count) ? clamp(count, 0, 30) : 10;
+  const maximum = Number.isInteger(count) ? clamp(count, 0, 100) : 10;
   if (!items.length || maximum === 0) return () => {};
   const cleanup = new AbortController();
   const listener = { signal: cleanup.signal };
