@@ -87,6 +87,11 @@ export async function initializeDatabase() {
         fetched_at TIMESTAMPTZ NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS floating_emoji_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        emoji_count INTEGER NOT NULL DEFAULT 10 CHECK (emoji_count BETWEEN 0 AND 30)
+      );
+
       CREATE TABLE IF NOT EXISTS floating_emojis (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL,

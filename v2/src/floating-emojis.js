@@ -12,14 +12,15 @@ export function throwVelocity(points) {
 }
 
 // DOM animation stays outside React's render loop. Every listener/frame is disposed.
-export function startFloatingEmojis(layer, items, apiBase, gallery = false) {
-  if (!items.length) return () => {};
+export function startFloatingEmojis(layer, items, apiBase, gallery = false, count = 10) {
+  const maximum = Number.isInteger(count) ? clamp(count, 0, 30) : 10;
+  if (!items.length || maximum === 0) return () => {};
   const cleanup = new AbortController();
   const listener = { signal: cleanup.signal };
   const pointer = { x: -10000, y: -10000 };
   const sprites = [];
   let width = innerWidth, height = innerHeight, frame, last = 0, elapsed = 0;
-  let fpsTime = 0, fpsFrames = 0, limit = 10;
+  let fpsTime = 0, fpsFrames = 0, limit = maximum;
   const resize = () => { width = innerWidth; height = innerHeight; };
   window.addEventListener("resize", resize, listener);
   window.addEventListener("pointermove", event => {
@@ -88,7 +89,7 @@ export function startFloatingEmojis(layer, items, apiBase, gallery = false) {
     layer.hidden = blocked;
     if (!blocked) {
       fpsTime += seconds; fpsFrames++;
-      if (fpsTime >= 3) { const fps = fpsFrames / fpsTime; if (fps < 30) limit = Math.max(3, limit - 1); else if (fps > 45) limit = Math.min(10, limit + 1); fpsTime = 0; fpsFrames = 0; }
+      if (fpsTime >= 3) { const fps = fpsFrames / fpsTime; if (fps < 30) limit = Math.max(Math.min(3, maximum), limit - 1); else if (fps > 45) limit = Math.min(maximum, limit + 1); fpsTime = 0; fpsFrames = 0; }
       while (sprites.length < limit) spawn();
       for (let index = sprites.length - 1; index >= 0; index--) {
         const s = sprites[index];

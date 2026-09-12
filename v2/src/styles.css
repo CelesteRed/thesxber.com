@@ -230,6 +230,9 @@ body { display: flex; justify-content: center; align-items: center; }
 .floating-emoji:focus-visible { outline: 2px solid #235227; border-radius: 10px; }
 .emoji-bubble { position: absolute; width: 200px; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; background: #f5fff3; color: #1a421d; border: 2px solid #235227; box-shadow: 0 3px 10px #17331b25; font: 600 13px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; pointer-events: none; }
 .admin-emojis { margin-top: 32px; padding-top: 24px; border-top: 1px solid #23522755; }
+.emoji-controller { margin: 16px 0; padding: 16px; border: 1px solid #23522766; border-radius: 8px; }
+.emoji-controller legend { font-weight: 700; padding: 0 6px; }
+.emoji-controller input { max-width: 140px; }
 .emoji-admin-preview { display: grid; gap: 8px; font-size: 10px; }
 .emoji-admin-preview img { object-fit: contain; background: #dcecd7; }
 .emoji-admin-preview a { color: #235227; overflow-wrap: anywhere; }

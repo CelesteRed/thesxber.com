@@ -8,6 +8,7 @@ import { normalizeCreditUrl } from "./fanart-fields.js";
 
 const storage = process.env.EMOJI_STORAGE_DIR || fileURLToPath(new URL("../data/emojis/", import.meta.url));
 const metadataFile = path.join(storage, "metadata.json");
+const settingsFile = path.join(storage, "settings.json");
 const columns = "id, name, enabled, quotes, held_quotes, fanart_quotes, links";
 const validId = (id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
 const format = (row) => ({ id: row.id, name: row.name, enabled: row.enabled, quotes: row.quotes,
@@ -29,6 +30,31 @@ const localChange = (fn) => {
   queue = pending.catch(() => {});
   return pending;
 };
+
+export async function getEmojiSettings() {
+  if (isDatabaseReady()) {
+    const result = await query("SELECT emoji_count FROM floating_emoji_settings WHERE id=1");
+    return { count: result.rows[0]?.emoji_count ?? 10 };
+  }
+  try { return JSON.parse(await fs.readFile(settingsFile, "utf8")); }
+  catch (error) { if (error.code === "ENOENT") return { count: 10 }; throw error; }
+}
+
+export async function updateEmojiSettings(input) {
+  const count = input?.count;
+  if (!Number.isInteger(count) || count < 0 || count > 30) throw new Error("Emoji count must be a whole number from 0 to 30");
+  if (isDatabaseReady()) {
+    await query("INSERT INTO floating_emoji_settings (id,emoji_count) VALUES (1,$1) ON CONFLICT (id) DO UPDATE SET emoji_count=EXCLUDED.emoji_count", [count]);
+  } else {
+    await localChange(async () => {
+      await fs.mkdir(storage, { recursive: true });
+      const temporary = `${settingsFile}.${randomUUID()}.tmp`;
+      await fs.writeFile(temporary, JSON.stringify({ count }));
+      await fs.rename(temporary, settingsFile);
+    });
+  }
+  return { count };
+}
 
 export function emojiFields(input = {}, defaults = false) {
   const fields = {};

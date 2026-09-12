@@ -5,6 +5,7 @@ const MotionContext = createContext(null);
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 export function PublicAtmosphere({ children, gallery = false }) {
   const [items, setItems] = useState([]);
+  const [count, setCount] = useState(10);
   const [visible, setVisible] = useState(() => {
     try { const saved = sessionStorage.getItem("sxber-emojis"); if (saved !== null) return saved === "on"; } catch {}
     return !matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -13,12 +14,15 @@ export function PublicAtmosphere({ children, gallery = false }) {
   useEffect(() => {
     const controller = new AbortController();
     fetch(`${API_BASE}/api/emojis`, { signal: controller.signal }).then(r => r.ok ? r.json() : null)
-      .then(data => { if (Array.isArray(data?.items)) setItems(data.items); }).catch(() => {});
+      .then(data => {
+        if (Array.isArray(data?.items)) setItems(data.items);
+        if (Number.isInteger(data?.settings?.count)) setCount(data.settings.count);
+      }).catch(() => {});
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (visible && items.length) return startFloatingEmojis(layer.current, items, API_BASE, gallery);
-  }, [visible, items, gallery]);
+    if (visible && items.length) return startFloatingEmojis(layer.current, items, API_BASE, gallery, count);
+  }, [visible, items, gallery, count]);
   useEffect(() => {
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
     const changed = () => { if (preference.matches) setVisible(false); };
@@ -26,7 +30,7 @@ export function PublicAtmosphere({ children, gallery = false }) {
     return () => preference.removeEventListener("change", changed);
   }, []);
   const toggle = () => setVisible(current => { try { sessionStorage.setItem("sxber-emojis", current ? "off" : "on"); } catch {} return !current; });
-  return <MotionContext.Provider value={{ visible, toggle, available: items.length > 0 }}>
+  return <MotionContext.Provider value={{ visible, toggle, available: items.length > 0 && count > 0 }}>
     {children}<div ref={layer} className="floating-emoji-layer" aria-label="Floating emojis" />
   </MotionContext.Provider>;
 }

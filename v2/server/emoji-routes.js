@@ -1,18 +1,25 @@
 import multer from "multer";
-import { createEmoji, deleteEmoji, emojiImage, listEmojis, updateEmoji } from "./emojis.js";
+import { createEmoji, deleteEmoji, emojiImage, listEmojis, updateEmoji, getEmojiSettings, updateEmojiSettings } from "./emojis.js";
 import { recordAdminActivity } from "./auth.js";
 
 export function registerEmojiRoutes(app, requireAdmin) {
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024, files: 1 } }).single("file");
   app.get("/api/emojis", async (request, response) => {
     response.set("Cache-Control", "no-cache");
-    try { response.json({ items: await listEmojis() }); }
+    try { const [items, settings] = await Promise.all([listEmojis(), getEmojiSettings()]); response.json({ items, settings }); }
     catch { response.status(503).json({ error: "Emojis are temporarily unavailable" }); }
   });
   app.get("/api/admin/emojis", requireAdmin, async (request, response) => {
     response.set("Cache-Control", "no-store");
-    try { response.json({ items: await listEmojis(true) }); }
+    try { const [items, settings] = await Promise.all([listEmojis(true), getEmojiSettings()]); response.json({ items, settings }); }
     catch { response.status(503).json({ error: "Unable to load emojis" }); }
+  });
+  app.patch("/api/admin/emoji-settings", requireAdmin, async (request, response) => {
+    try {
+      const settings = await updateEmojiSettings(request.body);
+      await recordAdminActivity(request, { action: "emoji.settings", resourceType: "emoji-settings", resourceId: "global", metadata: settings });
+      response.json({ settings });
+    } catch (error) { response.status(400).json({ error: error.message || "Unable to save emoji settings" }); }
   });
   app.post("/api/admin/emojis", requireAdmin, (request, response) => {
     upload(request, response, async (error) => {

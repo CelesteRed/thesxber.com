@@ -5,7 +5,7 @@ export function updateEmojiDraft(entry, draft, changes) {
   for (const key of Object.keys(result)) if (JSON.stringify(result[key]) === JSON.stringify(entry[key])) delete result[key];
   return result;
 }
-export default function EmojiAdminSection({ items, drafts, errors, busy, onChange, onUploaded, onRemove }) {
+export default function EmojiAdminSection({ items, settings, drafts, errors, busy, onSettingsChange, onChange, onUploaded, onRemove }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   async function upload(event) {
@@ -20,6 +20,14 @@ export default function EmojiAdminSection({ items, drafts, errors, busy, onChang
   }
   return <section className="admin-emojis" aria-labelledby="emoji-title">
     <h2 id="emoji-title">Floating emojis</h2>
+    <fieldset className="emoji-controller admin-list-editor" disabled={busy || !settings}>
+      <legend>Emoji controller</legend>
+      <label>Default emoji count<input type="number" min={0} max={30} step={1}
+        value={drafts["emoji-settings"]?.count ?? settings?.count ?? ""}
+        onChange={event => onSettingsChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>
+      <small>0–30 emojis on visitors’ home and fanart pages. Set 0 to turn them off. Save all publishes this default for subsequent page loads. Visitors can still hide emojis, and slower devices may show fewer.</small>
+      {errors["emoji-settings"] && <p className="admin-row-error" role="alert">{errors["emoji-settings"]}</p>}
+    </fieldset>
     <p className="admin-copy">Emojis bounce around the home and fanart pages. Visitors can grab, drag and throw them. Uploads and removals publish immediately; edits use Save all.</p>
     <form className="admin-form" onSubmit={upload}><fieldset className="admin-upload-fields" disabled={busy || uploading}>
       <label>Emoji name<input name="name" required maxLength={60} /></label>

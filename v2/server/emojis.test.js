@@ -26,9 +26,13 @@ test("emoji API: upload, originals, editing, hidden assets, validation and audit
   const db = await import("./db.js");
   const emojis = await import("./emojis.js");
   let server;
+  let previousSettings;
+  let ledgerStart = 0;
   const ids = [];
   try {
     await db.initializeDatabase();
+    previousSettings = await emojis.getEmojiSettings();
+    if (db.isDatabaseReady()) ledgerStart = (await db.query("SELECT COALESCE(MAX(id),0) AS id FROM admin_activity")).rows[0].id;
     const { app } = await import("./index.js");
     server = app.listen(0, "127.0.0.1");
     await new Promise(resolve => server.once("listening", resolve));
@@ -37,6 +41,17 @@ test("emoji API: upload, originals, editing, hidden assets, validation and audit
     for (const method of ["GET", "POST", "PATCH", "DELETE"]) {
       const suffix = ["PATCH", "DELETE"].includes(method) ? "/123" : "";
       assert.equal((await fetch(`${base}/api/admin/emojis${suffix}`, { method })).status, 401);
+    }
+    const settingsUrl = `${base}/api/admin/emoji-settings`;
+    assert.equal((await fetch(settingsUrl, { method: "PATCH" })).status, 401);
+    const changeCount = count => fetch(settingsUrl, { method: "PATCH", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ count }) });
+    assert.deepEqual((await (await fetch(`${base}/api/emojis`)).json()).settings, previousSettings);
+    for (const count of [-1, 31, 2.5, "5", null]) assert.equal((await changeCount(count)).status, 400);
+    for (const count of [0, 1, 30, 7]) {
+      assert.equal((await changeCount(count)).status, 200);
+      assert.deepEqual(await emojis.getEmojiSettings(), { count });
+      assert.deepEqual((await (await fetch(`${base}/api/emojis`)).json()).settings, { count });
+      assert.deepEqual((await (await fetch(`${base}/api/admin/emojis`, { headers })).json()).settings, { count });
     }
     const original = await sharp({ create: { width: 512, height: 256, channels: 4, background: { r: 40, g: 120, b: 50, alpha: .5 } } }).png().toBuffer();
     const form = new FormData(); form.set("name", "Test emoji"); form.set("file", new Blob([original], { type: "image/png" }), "emoji.png");
@@ -78,13 +93,19 @@ test("emoji API: upload, originals, editing, hidden assets, validation and audit
     assert.deepEqual((await emojis.emojiImage(animation.id, true)).data, animated);
     assert.equal((await fetch(`${base}/api/admin/emojis/${item.id}`, { method: "DELETE", headers })).status, 200);
     assert.equal(await emojis.emojiImage(item.id, true), null);
+    assert.deepEqual(await emojis.getEmojiSettings(), { count: 7 }, "Uploads and removals preserve the global count");
     if (db.isDatabaseReady()) {
+      assert.equal((await db.query("SELECT emoji_count FROM floating_emoji_settings WHERE id=1")).rows[0].emoji_count, 7);
+      const settingsEvents = (await db.query("SELECT metadata FROM admin_activity WHERE action='emoji.settings' AND id > $1 ORDER BY id", [ledgerStart])).rows;
+      assert.deepEqual(settingsEvents.map(row => row.metadata.count), [0, 1, 30, 7]);
       const rows = (await db.query("SELECT action FROM admin_activity WHERE resource_id=$1 ORDER BY id", [item.id])).rows;
       assert.deepEqual(rows.map(row => row.action), ["emoji.upload", "emoji.update", "emoji.update", "emoji.delete"]);
     }
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     for (const id of ids) { await emojis.deleteEmoji(id).catch(() => {}); if (db.isDatabaseReady()) await db.query("DELETE FROM admin_activity WHERE resource_id=$1", [id]); }
+    if (previousSettings) await emojis.updateEmojiSettings(previousSettings);
+    if (db.isDatabaseReady()) await db.query("DELETE FROM admin_activity WHERE action='emoji.settings' AND id > $1", [ledgerStart]);
     await db.closeDatabase();
     await fs.rm(scratch, { recursive: true, force: true });
   }

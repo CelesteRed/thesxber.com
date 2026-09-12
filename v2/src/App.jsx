@@ -245,6 +245,7 @@ function AdminPage() {
   const [file, setFile] = useState(null);
   const [entries, setEntries] = useState([]);
   const [emojis, setEmojis] = useState([]);
+  const [emojiSettings, setEmojiSettings] = useState(null);
   const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
   const [message, setMessage] = useState("Checking Discord session…");
@@ -267,6 +268,15 @@ function AdminPage() {
     setSaveErrors(current => { const next = { ...current }; delete next[entry.filename]; return next; });
   };
 
+  const changeEmojiSettings = (count) => {
+    setDrafts(current => {
+      const next = { ...current };
+      if (count === emojiSettings?.count) delete next["emoji-settings"];
+      else next["emoji-settings"] = { count };
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next["emoji-settings"]; return next; });
+  };
   const changeEmoji = (entry, changes) => {
     const key = `emoji:${entry.id}`;
     setDrafts(current => {
@@ -298,14 +308,16 @@ function AdminPage() {
     for (const [filename, draft] of Object.entries(drafts)) {
       try {
         const emoji = filename.startsWith("emoji:");
-        const endpoint = emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const settings = filename === "emoji-settings";
+        const endpoint = settings ? "/api/admin/emoji-settings" : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
         const response = await fetch(apiUrl(endpoint), {
           method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(draft)
         });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
         if (!response.ok) throw new Error(data.error || "Unable to save this item. Try again.");
-        if (emoji) setEmojis(current => current.map(entry => entry.id === filename.slice(6) ? data.item : entry));
+        if (settings) setEmojiSettings(data.settings);
+        else if (emoji) setEmojis(current => current.map(entry => entry.id === filename.slice(6) ? data.item : entry));
         else setEntries(current => current.map(entry => entry.filename === filename ? data.item : entry));
         setDrafts(current => { const next = { ...current }; delete next[filename]; return next; });
         saved++;
@@ -339,6 +351,7 @@ function AdminPage() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to load emojis");
     setEmojis(data.items || []);
+    setEmojiSettings(data.settings || { count: 10 });
   }, []);
   const loadDashboard = useCallback(async () => {
     await Promise.all([loadEntries(), loadActivity(), loadEmojis()]);
@@ -389,6 +402,7 @@ function AdminPage() {
       setUser(null);
       setEntries([]);
       setEmojis([]);
+      setEmojiSettings(null);
       setDrafts({});
       setSaveErrors({});
       setActivity([]);
@@ -499,6 +513,7 @@ function AdminPage() {
           ))}
         </div>
         <EmojiAdminSection items={emojis} drafts={drafts} errors={saveErrors} busy={savingAll}
+          settings={emojiSettings} onSettingsChange={changeEmojiSettings}
           onChange={changeEmoji} onRemove={removeEmoji}
           onUploaded={item => { setEmojis(current => [...current, item]); loadActivity().catch(() => {}); }} />
         <section className="admin-ledger" aria-labelledby="activity-title">
