@@ -4,8 +4,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { throwVelocity } from "../src/floating-emojis.js";
-import { createEmojiUnlockTracker, hasEmojiUnlock, emojiUnlockCookie } from "../src/emoji-unlock.js";
+import { startFloatingEmojis, throwVelocity } from "../src/floating-emojis.js";
+import { installEmojiParty } from "../src/emoji-party.js";
 import { markdownToHtml } from "../src/markdown.js";
 
 test("throw speed uses recent movement, is capped, and stationary releases stop", () => {
@@ -16,29 +16,60 @@ test("throw speed uses recent movement, is capped, and stationary releases stop"
   assert.ok(markdownToHtml("**Hello**").includes("<strong>Hello</strong>"));
 });
 
-test("emoji easter egg needs ten of one action and unlocks only once", () => {
-  for (const trigger of ["click", "hover", "drag"]) {
-    let unlocks = 0;
-    const interact = createEmojiUnlockTracker(() => unlocks++);
-    interact("pointerdown");
-    for (const action of ["click", "hover", "drag"]) {
-      for (let i = 0; i < 9; i++) interact(action);
-      assert.equal(unlocks, 0, "Counts are separate; nine of each does not unlock");
-    }
-    interact(trigger);
-    assert.equal(unlocks, 1);
-    for (let i = 0; i < 20; i++) interact("click");
-    interact("drag"); interact("hover");
-    assert.equal(unlocks, 1, "No repeated toast after unlocking");
+test("emojis start at zero without touching the DOM", () => {
+  for (const count of [undefined, 0, -1, NaN]) {
+    const cleanup = startFloatingEmojis(null, [{ name: "Party" }], "", false, count);
+    assert.equal(typeof cleanup, "function");
+    cleanup();
   }
-  const restored = createEmojiUnlockTracker(() => assert.fail("Returning visitors should not get another toast"), true);
-  restored("hover"); restored("drag");
-  assert.equal(hasEmojiUnlock("unrelated=1; sxber-emoji-unlocked=1; another=2"), true);
-  assert.equal(hasEmojiUnlock("sxber-emoji-unlocked=0"), false);
-  assert.equal(hasEmojiUnlock("prefix-sxber-emoji-unlocked=1"), false);
-  assert.equal(hasEmojiUnlock("sxber-emoji-unlocked=10"), false);
-  assert.match(emojiUnlockCookie(false), /Path=\/; Max-Age=31536000; SameSite=Lax$/);
-  assert.match(emojiUnlockCookie(true), /; Secure$/);
+});
+
+test("console party requires a call, prints the note, and hints after five minutes", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const logs = [];
+  let activations = 0;
+  const host = { console: { log: text => logs.push(text) }, setTimeout, clearTimeout };
+  const cleanup = installEmojiParty(host, () => activations++);
+  const command = host.partyTime;
+  assert.equal(typeof command, "function");
+  assert.equal(activations, 0, "Reading the command must not activate motion");
+  t.mock.timers.tick(299999);
+  assert.deepEqual(logs, []);
+  assert.equal(activations, 0, "Waiting does not activate emojis");
+  t.mock.timers.tick(1);
+  assert.deepEqual(logs, ["Type 'party time' for a fun time!", 'Run partyTime() or window["Party Time"]()']);
+  for (const name of ["partyTime", "party time", "Party Time"]) host[name]();
+  assert.equal(activations, 3);
+  assert.deepEqual(logs.slice(2), Array(3).fill("Contact @CelesteRed on discord if any problems found on the site!"));
+  t.mock.timers.tick(300000);
+  assert.equal(logs.length, 5, "Hint appears once per installation");
+  cleanup();
+  assert.equal(Object.hasOwn(host, "partyTime"), false);
+  assert.equal(Object.hasOwn(host, "party time"), false);
+  assert.equal(Object.hasOwn(host, "Party Time"), false);
+  command();
+  assert.equal(activations, 3, "A retained command cannot activate an unmounted page");
+});
+
+test("console cleanup cancels hints and safely supports remounts", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const logs = [];
+  const existing = () => {};
+  const host = { console: { log: text => logs.push(text) }, setTimeout, clearTimeout, partyTime: existing };
+  Object.defineProperty(host, "Party Time", { value: "reserved", configurable: false });
+  const cleanup = installEmojiParty(host, () => assert.fail("No automatic activation"));
+  assert.equal(host["Party Time"], "reserved");
+  cleanup();
+  assert.equal(host.partyTime, existing);
+  t.mock.timers.tick(300000);
+  assert.deepEqual(logs, []);
+  const cleanupAgain = installEmojiParty(host, () => assert.fail("No automatic activation"));
+  t.mock.timers.tick(300000);
+  assert.equal(logs.length, 2, "Only the current installation prints a hint");
+  const replacement = () => {};
+  host.partyTime = replacement;
+  cleanupAgain();
+  assert.equal(host.partyTime, replacement, "Do not overwrite a newer command during cleanup");
 });
 
 test("emoji API: upload, originals, editing, hidden assets, validation and audit", async () => {

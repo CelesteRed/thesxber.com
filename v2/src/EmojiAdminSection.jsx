@@ -25,10 +25,10 @@ export default function EmojiAdminSection({ items, settings, drafts, errors, bus
     <div className="emoji-admin-tools">
     <fieldset className="emoji-controller admin-list-editor" disabled={busy || !settings}>
       <legend>Emoji controller</legend>
-      <label>Default emoji count<input type="number" min={0} max={30} step={1}
+      <label>Party emoji count<input type="number" min={0} max={30} step={1}
         value={drafts["emoji-settings"]?.count ?? settings?.count ?? ""}
         onChange={event => onSettingsChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>
-      <small>0–30 emojis on visitors’ home and fanart pages. Set 0 to start with none. Save all publishes this default for subsequent page loads. Visitors can choose their own count from 0–100; slower devices may show fewer.</small>
+      <small>Visitors start with no emojis. This 0–30 count applies after they run partyTime() in the console. Set 0 to leave the count at zero after unlocking. Save all publishes this setting; unlocked visitors can choose 0–100 emojis.</small>
       {errors["emoji-settings"] && <p className="admin-row-error" role="alert">{errors["emoji-settings"]}</p>}
     </fieldset>
 

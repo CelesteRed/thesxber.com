@@ -1,0 +1,53 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import vm from "node:vm";
+import express from "express";
+import { registerSiteAssetRecovery } from "./site-assets.js";
+
+test("old iPhone pages recover assets without receiving the SPA HTML", async t => {
+  const dist = await fs.mkdtemp(path.join(os.tmpdir(), "sxber-site-assets-"));
+  await fs.mkdir(path.join(dist, "assets"));
+  await fs.writeFile(path.join(dist, "index.html"), '<script src="/assets/index-current.js"></script><link href="/assets/index-current.css">');
+  await fs.writeFile(path.join(dist, "assets/index-current.js"), 'console.log("current");');
+  await fs.writeFile(path.join(dist, "assets/index-current.css"), '.switch-screen { display: flex; }');
+  const app = express();
+  app.use(express.static(dist, { index: false }));
+  registerSiteAssetRecovery(app, dist);
+  app.get(/.*/, (req, res) => res.type("html").send("SPA fallback"));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise(resolve => server.once("listening", resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await fs.rm(dist, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const css = await fetch(base + "/style.css");
+  assert.match(css.headers.get("content-type"), /text\/css/);
+  assert.equal(css.headers.get("cache-control"), "no-store");
+  assert.match(await css.text(), /body > \.modal/);
+  const script = await fetch(base + "/script.js");
+  assert.match(script.headers.get("content-type"), /javascript/);
+  assert.equal(script.headers.get("cache-control"), "no-store");
+  const source = await script.text();
+  let destination;
+  const context = { URL, document: { getElementById: () => null }, window: { location: { origin: "https://thesxber.com", replace: url => destination = url } } };
+  vm.runInNewContext(source, context);
+  assert.equal(destination, "https://thesxber.com/?site-version=2");
+  destination = null; context.document.getElementById = () => ({});
+  vm.runInNewContext(source, context);
+  assert.equal(destination, null, "Current pages must not enter a reload loop");
+  for (const extension of ["js", "css"]) {
+    const old = await fetch(`${base}/assets/index-old.${extension}`, { redirect: "manual" });
+    assert.equal(old.status, 302);
+    assert.equal(old.headers.get("location"), `/assets/index-current.${extension}`);
+    assert.equal(old.headers.get("cache-control"), "no-store");
+    const current = await fetch(`${base}/assets/index-old.${extension}`);
+    assert.equal(current.status, 200);
+    assert.doesNotMatch(current.headers.get("content-type"), /html/);
+  }
+  const missing = await fetch(base + "/assets/missing.js");
+  assert.equal(missing.status, 404);
+  assert.doesNotMatch(missing.headers.get("content-type"), /html/);
+  await fs.unlink(path.join(dist, "assets/index-current.js"));
+  assert.equal((await fetch(base + "/assets/index-current.js", { redirect: "manual" })).status, 404);
+});

@@ -92,6 +92,12 @@ export async function initializeDatabase() {
         emoji_count INTEGER NOT NULL DEFAULT 10 CHECK (emoji_count BETWEEN 0 AND 30)
       );
 
+      CREATE TABLE IF NOT EXISTS sxberty_settings (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        phrases JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(phrases) = 'object'),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS floating_emojis (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL,
@@ -112,6 +118,35 @@ export async function initializeDatabase() {
         configured BOOLEAN NOT NULL DEFAULT FALSE,
         error TEXT
       );
+      CREATE TABLE IF NOT EXISTS live_tracking (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS hover_text TEXT NOT NULL DEFAULT '';
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS in_feed BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'video' CHECK (format IN ('video', 'short'));
+      ALTER TABLE youtube_videos DROP CONSTRAINT IF EXISTS youtube_videos_format_check;
+      ALTER TABLE youtube_videos ADD CONSTRAINT youtube_videos_format_check CHECK (format IN ('video', 'short', 'unknown'));
+      ALTER TABLE youtube_videos ALTER COLUMN format SET DEFAULT 'unknown';
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='youtube_videos' AND column_name='format_override') THEN
+          ALTER TABLE youtube_videos ADD COLUMN format_override BOOLEAN NOT NULL DEFAULT FALSE;
+          UPDATE youtube_videos SET format_override=TRUE WHERE format='short';
+        END IF;
+      END $$;
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS view_count TEXT;
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS duration TEXT;
+      ALTER TABLE youtube_videos ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+      ALTER TABLE youtube_cache_state ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ;
+      ALTER TABLE youtube_cache_state ADD COLUMN IF NOT EXISTS last_manual_at TIMESTAMPTZ;
+      ALTER TABLE youtube_cache_state ADD COLUMN IF NOT EXISTS sync_token TEXT;
+      ALTER TABLE youtube_cache_state ADD COLUMN IF NOT EXISTS sync_expires_at TIMESTAMPTZ;
+      ALTER TABLE youtube_cache_state ADD COLUMN IF NOT EXISTS uploads_playlist_id TEXT;
 
       CREATE TABLE IF NOT EXISTS admin_sessions (
         session_hash TEXT PRIMARY KEY,

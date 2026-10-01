@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:site": "node --test server/site-assets.test.js",
+    "test:videos": "node --test server/youtube.test.js",
     "test:embed": "node --test server/embed-art.test.js",
     "dev": "concurrently -k \"vite\" \"node server/index.js\"",
     "build": "vite build",
@@ -11,7 +13,10 @@
     "server": "node server/index.js",
     "start": "node server/index.js",
     "bot": "node server/discord-bot.js",
-    "test:emojis": "node --test server/emojis.test.js"
+    "test:emojis": "node --test server/emojis.test.js",
+    "test:live": "node --test server/live.test.js",
+    "test:pet": "node --test src/verity-pet.test.js src/sxberty-appearance.test.js src/sxberty-storage.test.js src/sxberty-motion.test.js src/sxberty-doom.test.js",
+    "test:sxberty": "node --test server/sxberty.test.js src/sxberty-drafts.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

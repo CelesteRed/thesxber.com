@@ -17,13 +17,18 @@ import {
   recordAdminActivity,
   startDiscordLogin
 } from "./auth.js";
-import { closeDatabase, initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
+import { initializeDatabase, isDatabaseConfigured, isDatabaseReady } from "./db.js";
+import { checkTwitchStatus, getLiveState, getPublicLive, startLiveTracking, stopLiveTracking, updateLiveConfig } from "./live.js";
 import { extensionFromUpload, fanartDir, getFanartEntries, getFanartImage, removeFanart, saveFanartBuffer, seedFanartFromDisk, updateFanartMetadata } from "./fanart.js";
 import { createIpRateLimiter, positiveInteger } from "./rate-limit.js";
 import { getYouTubeFeed, startYouTubeCacheScheduler, stopYouTubeCacheScheduler } from "./youtube.js";
 import { startDiscordBot } from "./discord-bot.js";
 import { getArtworkOfTheHour, HOUR_MS, saveBannerCrop, prepareBannerCrop } from "./embed-art.js";
 import { registerEmojiRoutes } from "./emoji-routes.js";
+import { API_NOTES } from "../shared/api-notes.js";
+import { registerVideoRoutes } from "./video-routes.js";
+import { registerSiteAssetRecovery } from "./site-assets.js";
+import { registerSxbertyRoutes } from "./sxberty-routes.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -94,6 +99,44 @@ async function requireAdmin(request, response, next) {
 }
 
 registerEmojiRoutes(app, requireAdmin);
+registerSxbertyRoutes(app, requireAdmin);
+app.get("/api/live", async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    await checkTwitchStatus();
+    response.json({ ...await getPublicLive(), notes: API_NOTES });
+  } catch (error) {
+    console.error("Live status error:", error.message);
+    response.status(503).json({ error: "Unable to load live status" });
+  }
+});
+
+app.get("/api/admin/live", requireAdmin, async (request, response) => {
+  response.set("Cache-Control", "no-store");
+  try {
+    const state = await getLiveState();
+    response.json(state);
+  } catch (error) {
+    response.status(503).json({ error: "Unable to load live tracking settings" });
+  }
+});
+
+app.patch("/api/admin/live", requireAdmin, async (request, response) => {
+  try {
+    const result = await updateLiveConfig(request.body);
+    await recordAdminActivity(request, {
+      action: "live.update",
+      resourceType: "live",
+      resourceId: "global",
+      metadata: { fields: Object.keys(request.body || {}).filter(key => !key.toLowerCase().includes("secret") && key !== "config" && key !== "twitch" && key !== "tiktok") }
+    });
+    response.json(result);
+  } catch (error) {
+    response.status(400).json({ error: error.message || "Unable to save live tracking settings" });
+  }
+});
+
+registerVideoRoutes(app, requireAdmin);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -104,6 +147,7 @@ const upload = multer({
 app.get("/api/health", (request, response) => response.json({
   ok: true,
   service: "thesxber-v2",
+  notes: API_NOTES,
   database: isDatabaseReady() ? "ready" : (isDatabaseConfigured() ? "starting" : "filesystem-fallback")
 }));
 
@@ -153,8 +197,9 @@ app.post("/api/auth/logout", async (request, response) => {
 });
 
 app.get("/api/youtube", async (request, response) => {
+  response.set("Cache-Control", "no-store");
   try {
-    response.json(await getYouTubeFeed());
+    response.json({ ...await getYouTubeFeed(), notes: API_NOTES });
   } catch (error) {
     console.error("YouTube feed error:", error.message);
     response.status(502).json({ error: "Unable to load YouTube feed" });
@@ -163,7 +208,7 @@ app.get("/api/youtube", async (request, response) => {
 
 app.get("/api/fanart", async (request, response) => {
   try {
-    response.json({ items: await getFanartEntries() });
+    response.json({ items: await getFanartEntries(), notes: API_NOTES });
   } catch (error) {
     console.error("Fanart listing error:", error.message);
     response.status(500).json({ error: "Unable to load fanart" });
@@ -335,7 +380,7 @@ function sendSitePage(request, response) {
     .replaceAll("__SITE_ORIGIN__", escapeHtmlAttribute(origin))
     .replaceAll("__PAGE_URL__", escapeHtmlAttribute(`${origin}${pagePath}`))
     .replaceAll("__EMBED_HOUR__", String(Math.floor(Date.now() / HOUR_MS)));
-  response.set("Cache-Control", "no-cache");
+  response.set("Cache-Control", "no-store");
   response.type("html").send(html);
 }
 
@@ -345,6 +390,7 @@ app.get(["/", "/index.html"], sendSitePage);
 // This fallback serves seeded images while local development runs without DB.
 app.use("/fanart", express.static(fanartDir, { maxAge: "1h" }));
 if (fs.existsSync(distDir)) app.use(express.static(distDir, { index: false }));
+registerSiteAssetRecovery(app, distDir);
 app.get(/.*/, sendSitePage);
 
 async function waitForDatabase() {
@@ -370,12 +416,14 @@ export async function startServer() {
   if (seeded) console.info(`Seeded ${seeded} fanart images into PostgreSQL.`);
   const server = app.listen(port, () => console.info(`thesxber v2 API listening on http://localhost:${port}`));
   startYouTubeCacheScheduler();
+  startLiveTracking();
 
   let discordClient = null;
   startDiscordBot().then((client) => { discordClient = client; }).catch((error) => console.error("Discord bot startup error:", error.message));
 
   async function shutdown() {
     stopYouTubeCacheScheduler();
+    stopLiveTracking();
     discordClient?.destroy();
     server.close(async () => {
       await closeDatabase();

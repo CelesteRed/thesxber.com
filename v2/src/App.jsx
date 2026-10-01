@@ -2,9 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import SiteCredit, { PublicAtmosphere } from "./SiteCredit";
 import EmojiAdminSection, { updateEmojiDraft } from "./EmojiAdminSection";
 import AdminSection from "./AdminSection";
+import LiveAdminSection, { updateLiveDraft } from "./LiveAdminSection";
+import VideoAdminSection from "./VideoAdminSection";
 import FanartPage from "./FanartPage";
+import MediaFeed from "./MediaFeed";
+import FooterDetails from "./FooterDetails";
 import BannerCropEditor from "./BannerCropEditor";
 import { updateFanartDraft } from "./fanart-drafts.js";
+import SxbertyPet, { useSxbertyPet } from "./SxbertyPet";
+import SxbertyAdminSection from "./SxbertyAdminSection";
+import { updateSxbertyDraft } from "./sxberty-drafts.js";
+import { validateSxbertyPatch } from "../shared/sxberty.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -24,15 +32,6 @@ function apiUrl(path) {
 
 function assetUrl(path) {
   return `${API_BASE}${path}`;
-}
-
-function generateDemoTiles() {
-  return Array.from({ length: 10 }, (_, index) => ({
-    id: `demo-${index + 1}`,
-    title: `Recent Upload / Video #${index + 1}`,
-    thumbnail: `https://picsum.photos/400/400?random=${index + 1}`,
-    videoUrl: "https://youtube.com"
-  }));
 }
 
 function IconButton({ icon, className = "", ...props }) {
@@ -59,7 +58,7 @@ function ExternalIconLink({ href, icon, className = "", label, onMouseEnter }) {
   );
 }
 
-function Header({ onEmail }) {
+function Header({ onEmail, onDomain, petUnlocked }) {
   return (
     <header className="top-header">
       <div className="profile-shortcuts">
@@ -67,69 +66,28 @@ function Header({ onEmail }) {
         <IconButton type="button" className="email-theme" title="Contact Email" aria-label="Contact Email" icon="fa-solid fa-envelope" onClick={onEmail} />
         <a href="/fanart" className="switch-icon-btn fanart-theme" title="Fanart Gallery" aria-label="Fanart Gallery"><span className="icon-inner"><i className="fa-solid fa-palette" /></span></a>
       </div>
-      <div className="top-domain">thesxber.com</div>
+      <button type="button" className="top-domain" onClick={onDomain} aria-label={petUnlocked ? "thesxber.com — Visit Sxberty" : "thesxber.com"}>thesxber.com</button>
+
     </header>
   );
 }
-
-function FeedCards({ feed }) {
-  if (feed.status === "loading") {
-    return <div className="loading-state"><i className="fa-solid fa-spinner fa-spin" /><p>Loading Feed...</p></div>;
-  }
-  if (feed.status === "error") return <p className="loading-state">Error loading feed.</p>;
-  if (!feed.items.length) return <p className="loading-state">No videos found.</p>;
-
-  return feed.items.map((item) => (
-    <a href={item.videoUrl} target="_blank" rel="noreferrer" className="switch-card" key={item.id}>
-      <img src={item.thumbnail} alt={item.title} />
-      <div className="switch-card-title">{item.title}</div>
-    </a>
-  ));
-}
-
-function MainCarousel() {
-  const cardsViewport = useRef(null);
-  const audio = useRef(null);
-  const [feed, setFeed] = useState({ status: "loading", items: [] });
-
+function LiveStatus() {
+  const [status, setStatus] = useState(null);
   useEffect(() => {
     let active = true;
-    fetch(apiUrl("/api/youtube"))
-      .then((response) => {
-        if (!response.ok) throw new Error("Feed request failed");
-        return response.json();
-      })
-      .then((data) => {
-        if (!active) return;
-        setFeed({ status: "ready", items: data.configured ? (data.items || []) : generateDemoTiles() });
-      })
-      .catch(() => {
-        if (active) setFeed({ status: "error", items: [] });
-      });
-    return () => { active = false; };
+    const load = () => fetch(apiUrl("/api/live")).then(response => response.ok ? response.json() : null).then(data => { if (active && data) setStatus(data); }).catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => { active = false; clearInterval(timer); };
   }, []);
-
-  const playClickSound = useCallback(() => {
-    if (!audio.current) return;
-    audio.current.currentTime = 0;
-    audio.current.play().catch(() => {});
-  }, []);
-
-  const scroll = (direction) => {
-    playClickSound();
-    cardsViewport.current?.scrollBy({ left: direction * 320, behavior: "smooth" });
-  };
-
-  return (
-    <main className="main-carousel">
-      <button className="nav-arrow left-arrow" type="button" aria-label="Scroll Left" onClick={() => scroll(-1)}><i className="fa-solid fa-chevron-left" /></button>
-      <div className="cards-viewport" ref={cardsViewport}>
-        <div className="cards-track"><FeedCards feed={feed} /></div>
-      </div>
-      <button className="nav-arrow right-arrow" type="button" aria-label="Scroll Right" onClick={() => scroll(1)}><i className="fa-solid fa-chevron-right" /></button>
-      <audio ref={audio} preload="auto"><source src="/nextpageclick.mp3" type="audio/mpeg" /></audio>
-    </main>
-  );
+  const providers = status ? ["tiktok"].map(key => ({ key, ...status[key] })).filter(item => item.configured) : [];
+  if (!providers.length) return null;
+  return <div className="live-status" aria-label="Live status">
+    {providers.map(provider => <a key={provider.key} href={provider.url} target="_blank" rel="noreferrer" className={provider.live ? "is-live" : ""}>
+      <span className="live-status-dot" aria-hidden="true" />{provider.key === "twitch" ? "Twitch" : "TikTok"}{provider.live ? " LIVE" : ""}
+      {provider.live && provider.title ? <span className="live-status-title"> — {provider.title}</span> : null}
+    </a>)}
+  </div>;
 }
 
 function BottomDock() {
@@ -142,8 +100,10 @@ function BottomDock() {
           ))}
         </div>
       </div>
+      <LiveStatus />
       <SiteCredit />
       <div className="switch-line" />
+      <FooterDetails email={EMAIL} />
     </footer>
   );
 }
@@ -203,6 +163,7 @@ function FanartAdminRow({ entry, draft = {}, onChange, onRemove, busy, error }) 
 
 function Site() {
   const [emailOpen, setEmailOpen] = useState(false);
+  const sxberty = useSxbertyPet();
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -214,11 +175,12 @@ function Site() {
   }, []);
 
   return (
-    <div className="switch-screen">
-      <Header onEmail={() => setEmailOpen(true)} />
-      <MainCarousel />
+    <div className="switch-screen homepage-screen">
+      <Header onEmail={() => setEmailOpen(true)} onDomain={sxberty.visit} petUnlocked={Boolean(sxberty.pet)} />
+      <MediaFeed />
       <BottomDock />
       {emailOpen && <EmailModal onClose={() => setEmailOpen(false)} />}
+      <SxbertyPet {...sxberty} blocked={emailOpen} />
     </div>
   );
 }
@@ -245,6 +207,14 @@ function AdminPage() {
   const [entries, setEntries] = useState([]);
   const [emojis, setEmojis] = useState([]);
   const [emojiSettings, setEmojiSettings] = useState(null);
+  const [videos, setVideos] = useState(null);
+  const [liveData, setLiveData] = useState(null);
+  const [sxbertySettings, setSxbertySettings] = useState(null);
+  const [sxbertyLoading, setSxbertyLoading] = useState(false);
+  const [sxbertyLoadError, setSxbertyLoadError] = useState("");
+  const sxbertyLoadVersion = useRef(0);
+  const [syncingVideos, setSyncingVideos] = useState(false);
+  const [videoMessage, setVideoMessage] = useState("");
   const [activity, setActivity] = useState([]);
   const [adminReady, setAdminReady] = useState(false);
   const [message, setMessage] = useState("Checking Discord session…");
@@ -298,6 +268,36 @@ function AdminPage() {
     } catch (error) { setMessage(error.message); }
   };
 
+  const changeVideo = (entry, changes) => {
+    const key = `video:${entry.id}`;
+    setDrafts(current => {
+      const baseline = { ...entry, format: entry.formatOverride ? entry.format : "auto" };
+      const next = { ...current }, draft = updateEmojiDraft(baseline, current[key], changes);
+      if (Object.keys(draft).length) next[key] = draft; else delete next[key];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+  };
+  const changeLive = (changes) => {
+    const key = "live";
+    setDrafts(current => {
+      const next = { ...current };
+      const draft = updateLiveDraft(liveData, current[key], changes);
+      if (Object.keys(draft).length) next[key] = draft; else delete next[key];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+  };
+  const changeSxberty = (phaseId, phrases) => {
+    setDrafts(current => {
+      const next = { ...current };
+      const draft = updateSxbertyDraft(sxbertySettings, current.sxberty, phaseId, phrases);
+      if (Object.keys(draft).length) next.sxberty = draft; else delete next.sxberty;
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next.sxberty; return next; });
+  };
+
   const saveAll = async () => {
     if (savingAll || !dirtyCount) return;
     setSavingAll(true);
@@ -307,15 +307,27 @@ function AdminPage() {
     for (const [filename, draft] of Object.entries(drafts)) {
       try {
         const emoji = filename.startsWith("emoji:");
+        const live = filename === "live";
+        const sxberty = filename === "sxberty";
+        const video = filename.startsWith("video:");
         const settings = filename === "emoji-settings";
-        const endpoint = settings ? "/api/admin/emoji-settings" : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const endpoint = sxberty ? "/api/admin/sxberty" : live ? "/api/admin/live" : settings ? "/api/admin/emoji-settings" : video ? `/api/admin/videos/${encodeURIComponent(filename.slice(6))}` : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const body = sxberty ? validateSxbertyPatch(draft) : draft;
         const response = await fetch(apiUrl(endpoint), {
-          method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(draft)
+          method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
         if (!response.ok) throw new Error(data.error || "Unable to save this item. Try again.");
-        if (settings) setEmojiSettings(data.settings);
+        if (sxberty) {
+          if (!data.settings) throw new Error("The saved Sxberty settings were not returned. Retry Save all.");
+          sxbertyLoadVersion.current++;
+          setSxbertyLoading(false);
+          setSxbertyLoadError("");
+          setSxbertySettings(data.settings);
+        } else if (live) setLiveData(data);
+        else if (settings) setEmojiSettings(data.settings);
+        else if (video) setVideos(current => ({ ...current, items: current.items.map(entry => entry.id === filename.slice(6) ? data.item : entry) }));
         else if (emoji) setEmojis(current => current.map(entry => entry.id === filename.slice(6) ? data.item : entry));
         else setEntries(current => current.map(entry => entry.filename === filename ? data.item : entry));
         setDrafts(current => { const next = { ...current }; delete next[filename]; return next; });
@@ -344,6 +356,29 @@ function AdminPage() {
     if (!response.ok) throw new Error(data.error || "The activity ledger is unavailable.");
     setActivity(data.items || []);
   }, []);
+  const loadLive = useCallback(async () => {
+    const response = await fetch(apiUrl("/api/admin/live"), { credentials: "include" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to load live tracking");
+    setLiveData(data);
+  }, []);
+
+  const loadSxberty = useCallback(async () => {
+    const version = ++sxbertyLoadVersion.current;
+    setSxbertyLoading(true);
+    setSxbertyLoadError("");
+    try {
+      const response = await fetch(apiUrl("/api/admin/sxberty"), { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to load Sxberty phrases.");
+      if (!data.settings) throw new Error("Sxberty settings are unavailable. Please retry.");
+      if (version === sxbertyLoadVersion.current) setSxbertySettings(data.settings);
+    } catch (error) {
+      if (version === sxbertyLoadVersion.current) setSxbertyLoadError(error.message);
+    } finally {
+      if (version === sxbertyLoadVersion.current) setSxbertyLoading(false);
+    }
+  }, []);
 
   const loadEmojis = useCallback(async () => {
     const response = await fetch(apiUrl("/api/admin/emojis"), { credentials: "include" });
@@ -352,9 +387,39 @@ function AdminPage() {
     setEmojis(data.items || []);
     setEmojiSettings(data.settings || { count: 10 });
   }, []);
+  const loadVideos = useCallback(async (statusOnly = false) => {
+    const response = await fetch(apiUrl("/api/admin/videos"), { credentials: "include" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to load videos");
+    setVideos(current => ({ ...data, receivedAt: Date.now(), items: statusOnly && current ? current.items : data.items }));
+  }, []);
+  const refreshVideoStatus = () => { setVideoMessage(""); loadVideos(true).catch(error => setVideoMessage(error.message)); };
+  useEffect(() => {
+    if (!videos?.sync?.inProgress || syncingVideos) return;
+    const timer = setInterval(() => { loadVideos(true).catch(error => setVideoMessage(error.message)); }, 5000);
+    return () => clearInterval(timer);
+  }, [videos?.sync?.inProgress, syncingVideos, loadVideos]);
+  const syncVideos = async () => {
+    if (syncingVideos || savingAll) return;
+    setSyncingVideos(true);
+    setVideoMessage("");
+    try {
+      const response = await fetch(apiUrl("/api/admin/videos/sync"), { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to sync videos");
+      setVideos({ ...data, receivedAt: Date.now() });
+      setMessage(`Synced ${data.items.length} videos.`);
+    } catch (error) {
+      setVideoMessage(error.message);
+      await loadVideos(true).catch(() => {});
+    } finally {
+      setSyncingVideos(false);
+      loadActivity().catch(() => {});
+    }
+  };
   const loadDashboard = useCallback(async () => {
-    await Promise.all([loadEntries(), loadActivity(), loadEmojis()]);
-  }, [loadActivity, loadEntries, loadEmojis]);
+    await Promise.all([loadEntries(), loadActivity(), loadEmojis(), loadVideos(), loadLive(), loadSxberty()]);
+  }, [loadActivity, loadEntries, loadEmojis, loadLive, loadVideos, loadSxberty]);
 
   useEffect(() => {
     let active = true;
@@ -402,6 +467,13 @@ function AdminPage() {
       setEntries([]);
       setEmojis([]);
       setEmojiSettings(null);
+      setVideos(null);
+      setLiveData(null);
+      sxbertyLoadVersion.current++;
+      setSxbertySettings(null);
+      setSxbertyLoading(false);
+      setSxbertyLoadError("");
+      setVideoMessage("");
       setDrafts({});
       setSaveErrors({});
       setActivity([]);
@@ -487,6 +559,12 @@ function AdminPage() {
         <p className="admin-copy">You are signed in with Discord. Uploads, edits, and removals are recorded in the activity ledger, and the restricted fanart commands use the same audit trail.</p>
         <p className="admin-message" aria-live="polite">{message}</p>
         <div className="admin-sections">
+        <VideoAdminSection data={videos} drafts={drafts} errors={saveErrors} busy={savingAll} syncing={syncingVideos}
+          message={videoMessage} onSync={syncVideos} onRefresh={refreshVideoStatus} onChange={changeVideo} />
+        <LiveAdminSection data={liveData} draft={drafts.live} error={saveErrors.live} busy={savingAll} onChange={changeLive} />
+        <SxbertyAdminSection settings={sxbertySettings} draft={drafts.sxberty} error={saveErrors.sxberty}
+          loading={sxbertyLoading} loadError={sxbertyLoadError} busy={savingAll}
+          onChange={changeSxberty} onRetry={loadSxberty} />
         <AdminSection title="Upload fanart">
         <form className="admin-form" onSubmit={upload}>
           <fieldset className="admin-upload-fields" disabled={savingAll}>

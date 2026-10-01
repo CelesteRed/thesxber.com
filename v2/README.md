@@ -4,6 +4,8 @@ This is the React version of the original `v1` site. The public route keeps the 
 
 ## Local setup
 
+The site has no visible developer credit. Successful public JSON responses from `/api/health`, `/api/youtube`, `/api/fanart`, and `/api/emojis` include a top-level `notes` field: "Contact @CelesteRed on discord if any problems found on the site!" This contact message lives in `shared/api-notes.js` and is available to anyone inspecting the API; the frontend does not render it.
+
 ```powershell
 cd v2
 npm install
@@ -12,7 +14,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. The API runs on `http://localhost:8787`. If `DATABASE_URL` is empty, local development falls back to the existing filesystem fanart and an in-memory YouTube cache. The Docker setup below enables the persistent database.
+Open `http://localhost:5173`. The API runs on `http://localhost:8787`. If `DATABASE_URL` is empty, local development falls back to the existing filesystem fanart and a persistent JSON YouTube cache. The Docker setup below enables the persistent database.
 
 ## Docker Compose
 
@@ -26,9 +28,9 @@ The app is available at `http://localhost:8787`. PostgreSQL persists in the `sxb
 
 For this same-host, private Docker network, PostgreSQL does not need TLS between the app and database, so `DATABASE_SSL=false` is the expected setting. If the database is moved to another host or crosses a network you do not fully control, enable `DATABASE_SSL=true` and use a TLS-capable PostgreSQL endpoint. Do not add a `ports` mapping to the `db` service; browsers should call the app's HTTP API, never PostgreSQL directly.
 
-If `YOUTUBE_API_KEY` is empty, the carousel uses the same style of demo tiles as v1. When configured, the backend requests the YouTube API and stores the latest 20 videos in PostgreSQL. Every browser reads `/api/youtube`; the backend refreshes the cache at most once per `YOUTUBE_CACHE_TTL_SECONDS` (60 seconds by default), so API keys and quota are never used per browser.
+If `YOUTUBE_API_KEY` is empty, the local feed is unconfigured and the homepage displays no demo tiles. For real data during local preview, set `YOUTUBE_PREVIEW_ORIGIN=https://thesxber.com` to read the existing live public video feed. When configured, the backend reads the channel uploads playlist using `channels.list` and `playlistItems.list`, caches its public videos, and serves the 20 latest visible uploads per format through `/api/youtube`. The homepage separates landscape Videos and portrait Shorts; formats are detected automatically, with optional Homepage shelf overrides in the Videos admin section. Public requests only read the cache. Automatic syncs run hourly (`YOUTUBE_CACHE_TTL_SECONDS=3600`, with a one-hour minimum even when an older environment sets 60). The scheduler checks for due work every minute without making a YouTube request until due. See [VIDEOS.md](VIDEOS.md) for admin controls, cooldowns and storage.
 
-The REST surface is intentionally small: `GET /api/health`, `GET /api/youtube`, `GET /api/fanart`, `GET /fanart/:filename`, Discord OAuth session/login/logout endpoints, and protected `POST`/`PATCH`/`DELETE /api/admin/fanart` plus `GET /api/admin/activity` endpoints. The browser never receives database credentials or calls PostgreSQL directly.
+The REST surface also includes public `GET /api/live` plus protected `GET`/`PATCH /api/admin/live`. Twitch uses client credentials saved securely by administrators in the authenticated Live tracking panel; the client secret is never returned by the API. The panel also controls the Helix polling interval (60–86,400 seconds), while Twitch account login remains a separate setting. TikTok stores a handle and an explicit manual live toggle/title because no documented public live-status API exists. Provider failures retain the previous Twitch result and mark it stale rather than reporting false offline status. If Twitch credentials are absent, tracking remains unavailable until they are configured.
 
 Public requests to `/fanart/:filename` return the cached WebP derivative with `Content-Type: image/webp`. The admin list uses `/fanart/:filename?original=1`, so PNG, JPEG, GIF, or uploaded WebP originals remain available. Existing database rows without a derivative are converted on their first public request and then cached. Set `WEBP_QUALITY` from 1–100 (82 by default). Filesystem fallback mode stores generated derivatives under `FANART_WEBP_DIR`.
 
@@ -79,3 +81,6 @@ The protected `PUT /api/admin/fanart/:filename/embed-crop` accepts `{ "crop": { 
 The admin keeps edits in memory until **Save all** is clicked. Reverting all fields hides the floating button. Saving sends only the changed fields for each artwork in a single authenticated `PATCH /api/admin/fanart/:filename`, including optional `embedCrop` and `creditUrl`; PostgreSQL commits each entry's metadata and rendered crop in one update. Successful entries leave the draft list; failed entries retain their drafts and display errors for retry. Refreshing the activity ledger does not reset drafts. Navigating away with unsaved changes triggers the browser's leave-page prompt.
 
 `hoverMarkdown` remains the API field name for descriptions; new uploads and edited descriptions over 100 characters are rejected, including Discord uploads/edits. Existing descriptions are not silently truncated. `creditUrl` accepts an empty string or a full HTTP/HTTPS URL without embedded credentials. The public listing includes this artist URL, but never private crop or eligibility settings. Uploads and removals retain their dedicated actions. The older crop-only PUT endpoint remains supported; the admin uses combined PATCH saves, audited as `fanart.update` with the changed fields and crop metadata.
+# Cached-page recovery
+
+Page HTML uses `Cache-Control: no-store`. `server/site-assets.js` keeps cached v1 pages recoverable: `/style.css` serves the current styles, and `/script.js` replaces the old page with a fresh v2 URL. Missing old `index-*.js` and `index-*.css` entry URLs redirect to the current build entry; unrelated missing `/assets` paths return 404 instead of HTML. Register recovery after static files and before the SPA fallback. Run `npm run test:site` when changing this behavior.

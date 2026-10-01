@@ -1,12 +1,13 @@
 import multer from "multer";
 import { createEmoji, deleteEmoji, emojiImage, listEmojis, updateEmoji, getEmojiSettings, updateEmojiSettings } from "./emojis.js";
 import { recordAdminActivity } from "./auth.js";
+import { API_NOTES } from "../shared/api-notes.js";
 
 export function registerEmojiRoutes(app, requireAdmin) {
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024, files: 1 } }).single("file");
   app.get("/api/emojis", async (request, response) => {
     response.set("Cache-Control", "no-cache");
-    try { const [items, settings] = await Promise.all([listEmojis(), getEmojiSettings()]); response.json({ items, settings }); }
+    try { const [items, settings] = await Promise.all([listEmojis(), getEmojiSettings()]); response.json({ items, settings, notes: API_NOTES }); }
     catch { response.status(503).json({ error: "Emojis are temporarily unavailable" }); }
   });
   app.get("/api/admin/emojis", requireAdmin, async (request, response) => {

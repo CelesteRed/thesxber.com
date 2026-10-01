@@ -5,7 +5,7 @@ The interaction follows the [sylve.love floating emoji reference](https://github
 ## Managing emojis
 
 1. Open `/admin` and sign in with an allowed Discord account.
-2. Expand **Floating emojis**. At the top, use **Emoji controller → Default emoji count** to choose 0–30 simultaneous emojis (initial default: 10). Set 0 to start visitors with no emojis, then click **Save all**. The saved count applies on subsequent home and fanart page loads.
+2. Expand **Floating emojis**. At the top, use **Emoji controller → Party emoji count** to choose 0–30 simultaneous emojis after console activation (initial setting: 10), then click **Save all**. Every page load starts at zero regardless of this setting. Setting 0 leaves the count at zero after unlocking until the visitor adjusts it.
 3. Enter a name, choose an image, and click **Upload emoji**. Uploads publish immediately with friendly default quotes.
 4. Edit any combination of emojis and fanart. The floating **Save all** button publishes all pending metadata edits. Failed entries keep their drafts for retry.
 5. Toggle **Show on the site** to enable or disable an emoji. Removing an emoji deletes its stored images and metadata immediately.
@@ -25,9 +25,13 @@ Uploads accept PNG, JPEG, GIF, and WebP up to 3 MB, 4096px per side, and 100 fra
 
 ## Visitor behavior
 
-The effect runs on the home page and `/fanart`, using the saved admin default on a visitor’s first load. Visitors can choose a personal count from 0 to 100, with a lower count on slower devices. Idle quotes appear every 5–15 seconds and last 2–4 seconds. Individual emojis live for 10–60 seconds, with a short fade-in and four-second fade-out. Proximity and grabbing pause their lifespan before fading. Touch supports dragging and throwing without mouse proximity slowdown.
+The home page and `/fanart` always start with zero emojis and no visible activation control. Previous unlock cookies and session counts are ignored. Clicks, drags, and hovers do not unlock anything. The effect never runs on `/admin`.
 
-The effect pauses in background tabs and hides while site dialogs are open. It never runs on `/admin`. Reduced-motion preferences start the count at zero unless the visitor explicitly chooses another count. The centered **Emoji count − number +** control above the footer credits is initially hidden. It unlocks after **10 clicks OR 10 separate drags OR 10 hovers** on floating emojis. Counts are independent and shared across emoji respawns during the current page visit; one drag counts once after at least 5px of movement. Touch entry is not a hover, and keyboard activations count as clicks. The first unlock shows **Emoji Easter Egg Unlocked** for 4.5 seconds and stores `sxber-emoji-unlocked=1` in a one-year, site-wide SameSite=Lax cookie (Secure on HTTPS). Returning visitors see the control without another toast. The unlocked control lets visitors choose 0–100; zero removes the effect. A personal choice is remembered for the browser tab’s session and never changes the admin default. The social links no longer have a separate changing text label underneath. The footer reads **made by @celeste & @bogged**. Each name links separately: [@celeste](https://github.com/CelesteRed) to GitHub and [@bogged](https://youtube.com/@itzbogged) to YouTube.
+Run `partyTime()` in the browser console to activate the effect for the current page. `window["party time"]()` and `window["Party Time"]()` are equivalent commands; bare `party time` is not valid JavaScript. Calling a command prints the API contact note: “Contact @CelesteRed on discord if any problems found on the site!” It also reveals the **Emoji count − number +** control. The initial party count uses the admin setting; visitors can then choose 0–100. Reloading or navigating to another page returns the effect to zero and hides the control. No cookie or storage entry automatically enables motion, including for reduced-motion visitors; the console command is an explicit opt-in.
+
+After five minutes on a public page, the console logs exactly `Type 'party time' for a fun time!`, followed by the runnable command syntax. The hint never activates emojis. Commands and the timer are cleaned up when the public page unmounts. There is no visible developer credit or unlock toast.
+
+While active, slower devices may show fewer emojis. Idle quotes appear every 5–15 seconds and last 2–4 seconds. Individual emojis live for 10–60 seconds, with a short fade-in and four-second fade-out. Proximity and grabbing pause their lifespan before fading. Touch supports dragging and throwing without mouse proximity slowdown. The effect pauses in background tabs and hides while site dialogs are open. Dragging does not open click links.
 
 ## Backend and deployment
 
