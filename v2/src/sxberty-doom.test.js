@@ -12,14 +12,14 @@ test("countdown shows whole remaining seconds without rounding a second twice", 
     assert.equal(scene.secondsRemaining, seconds);
     assert.equal(scene.time, `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`);
   }
-  assert.equal(getDoomPresentation(countdown, 1001).time, "01:00");
-  assert.equal(getDoomPresentation(countdown, 60_999).time, "00:01");
-  assert.equal(getDoomPresentation(countdown, 61_000).time, "00:00");
+  assert.equal(getDoomPresentation(countdown, 1001).time, "00:10");
+  assert.equal(getDoomPresentation(countdown, 1000 + COUNTDOWN_MS - 1).time, "00:01");
+  assert.equal(getDoomPresentation(countdown, 1000 + COUNTDOWN_MS).time, "00:00");
 });
 
 test("the first half drains color and the second half becomes red", () => {
-  for (const [seconds, gray, red, phase] of [[0,0,0,"graying"],[15,0.5,0,"graying"],[30,1,0,"graying"],[45,1,0.5,"reddening"],[60,1,1,"too-late"]]) {
-    const scene = getDoomPresentation(countdown, 1000 + seconds * 1000);
+  for (const [progress, gray, red, phase] of [[0,0,0,"graying"],[0.25,0.5,0,"graying"],[0.5,1,0,"graying"],[0.75,1,0.5,"reddening"],[1,1,1,"too-late"]]) {
+    const scene = getDoomPresentation(countdown, 1000 + progress * COUNTDOWN_MS);
     assert.equal(scene.active, true);
     assert.equal(scene.gray, gray);
     assert.equal(scene.red, red);
@@ -51,7 +51,7 @@ test("new, forming, and missing pets restore the normal scene", () => {
 test("invalid or backwards clocks do not produce negative countdowns or invalid colors", () => {
   for (const now of [-100, 0, NaN, Infinity]) {
     const scene = getDoomPresentation(countdown, now);
-    assert.equal(scene.time, "01:00");
+    assert.equal(scene.time, "00:10");
     assert.equal(scene.progress, 0);
     assert.ok(!scene.background.includes("NaN"));
   }

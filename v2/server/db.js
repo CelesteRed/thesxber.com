@@ -112,6 +112,18 @@ export async function initializeDatabase() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS sxberty_voices (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        trigger TEXT NOT NULL CHECK (trigger IN ('happy', 'uneasy', 'neutral', 'upset', 'angry', 'abandoned', 'throw', 'food', 'return-offscreen', 'return-lava', 'return-monster')),
+        caption TEXT NOT NULL DEFAULT '' CHECK (char_length(caption) <= 160),
+        duration_ms INTEGER NOT NULL CHECK (duration_ms BETWEEN 1 AND 30000),
+        audio_data BYTEA NOT NULL CHECK (octet_length(audio_data) BETWEEN 1 AND 5242880),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS floating_emojis (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL,

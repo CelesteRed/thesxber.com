@@ -1,40 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { getDeathFace, getFaceBlend } from "./sxberty-appearance.js";
 import { getSxbertyPhase } from "../shared/sxberty.js";
 
-test("smile gradually flattens below 80 and expressions become more upset", () => {
-  assert.deepEqual(getFaceBlend(100), { from: "normal", to: "normal", mix: 0 });
-  assert.deepEqual(getFaceBlend(80), { from: "normal", to: "normal", mix: 0 });
-  assert.deepEqual(getFaceBlend(70), { from: "normal", to: "neutral", mix: 0.5 });
-  assert.deepEqual(getFaceBlend(60), { from: "normal", to: "neutral", mix: 1 });
-  assert.deepEqual(getFaceBlend(50), { from: "neutral", to: "neutral", mix: 0 });
-  assert.deepEqual(getFaceBlend(30), { from: "neutral", to: "displeased", mix: 0.5 });
-  assert.deepEqual(getFaceBlend(14), { from: "displeased", to: "angry", mix: 0.5 });
-  assert.deepEqual(getFaceBlend(4), { from: "angry", to: "abandoned", mix: 0.5 });
-  assert.deepEqual(getFaceBlend(0), { from: "angry", to: "abandoned", mix: 1 });
+test("expressions snap to one face at every happiness boundary", () => {
+  for (const [happiness, face] of [
+    [110, "normal"], [100, "normal"], [80.01, "normal"],
+    [80, "neutral"], [70, "neutral"], [60, "neutral"],
+    [59.99, "displeased"], [50, "displeased"], [40, "displeased"],
+    [39.99, "angry"], [30, "angry"], [20, "angry"],
+    [19.99, "abandoned"], [14, "abandoned"], [4, "abandoned"], [0, "abandoned"], [-10, "abandoned"],
+  ]) assert.deepEqual(getFaceBlend(happiness), { from: face, to: face, mix: 0 });
 });
 
-test("blend weights stay finite and bounded for every happiness value", () => {
+test("the compatibility blend helper always selects exactly one face without opacity mixing", () => {
   for (let happiness = -10; happiness <= 110; happiness += 0.1) {
     const blend = getFaceBlend(happiness);
-    assert.ok(blend.mix >= 0 && blend.mix <= 1);
-    assert.ok(["normal", "neutral", "displeased", "angry", "abandoned"].includes(blend.from));
+    assert.equal(blend.mix, 0);
+    assert.equal(blend.from, blend.to);
     assert.ok(["normal", "neutral", "displeased", "angry", "abandoned"].includes(blend.to));
   }
   for (const value of [undefined, null, NaN, Infinity, "0"]) assert.deepEqual(getFaceBlend(value), getFaceBlend(100));
 });
 
+test("the sprite renders a single registered face overlay without inline opacity", async () => {
+  const source = await readFile(new URL("./SxbertySprite.jsx", import.meta.url), "utf8");
+  const faceLayer = source.match(/<span className="sxberty-face-layers">([\s\S]*?)<\/span>/)?.[1];
+  assert.ok(faceLayer, "The registered face layer remains present");
+  assert.equal((faceLayer.match(/<img\b/g) || []).length, 1);
+  assert.match(faceLayer, /src=\{faces\[to\]\}/);
+  assert.doesNotMatch(faceLayer, /opacity|transition|mix/);
+});
+
 test("death expressions are one worse than the pre-loss happiness phase", () => {
   for (const [happiness, face] of [
-    [100, "neutral"], [80, "neutral"], [60, "neutral"], [59.99, "displeased"],
-    [40, "displeased"], [39.99, "angry"], [20, "angry"], [19.99, "abandoned"], [0, "abandoned"],
+    [100, "neutral"], [80.01, "neutral"], [80, "displeased"], [60, "displeased"], [59.99, "angry"],
+    [40, "angry"], [39.99, "abandoned"], [20, "abandoned"], [19.99, "abandoned"], [0, "abandoned"],
   ]) assert.equal(getDeathFace(happiness), face);
   for (const invalid of [undefined, null, NaN, Infinity, "0"]) assert.equal(getDeathFace(invalid), "neutral");
 });
 
-test("a temporary forced face bypasses blending without changing happiness", () => {
+test("a temporary forced face selects one overlay without changing happiness", () => {
   for (const face of ["normal", "neutral", "displeased", "angry", "abandoned"]) {
     for (const happiness of [0, 10, 30, 50, 70, 100]) {
       assert.deepEqual(getFaceBlend(happiness, face), { from: face, to: face, mix: 0 });
@@ -46,7 +54,7 @@ test("a temporary forced face bypasses blending without changing happiness", () 
 });
 
 test("phrase phases match happiness boundary transitions", () => {
-  for (const [happiness, phase] of [[100,"happy"],[80,"happy"],[79.9,"uneasy"],[60,"uneasy"],[59.9,"neutral"],[40,"neutral"],[39.9,"upset"],[20,"upset"],[19.9,"angry"],[0.01,"angry"],[0,"abandoned"]]) {
+  for (const [happiness, phase] of [[100,"happy"],[80.01,"happy"],[80,"uneasy"],[79.9,"uneasy"],[60,"uneasy"],[59.9,"neutral"],[40,"neutral"],[39.9,"upset"],[20,"upset"],[19.9,"angry"],[0.01,"angry"],[0,"abandoned"]]) {
     assert.equal(getSxbertyPhase(happiness), phase);
   }
 });

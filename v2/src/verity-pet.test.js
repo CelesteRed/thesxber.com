@@ -55,7 +55,7 @@ test('new pets have the versioned defaults and requested unlock threshold', () =
   assert.equal(SXBERTY_STORAGE_KEY, 'sxber-verity-pet-v1');
   assert.equal(VERITY_STORAGE_KEY, SXBERTY_STORAGE_KEY);
   assert.equal(UNLOCK_CLICKS, 10);
-  assert.equal(COUNTDOWN_MS, MINUTE);
+  assert.equal(COUNTDOWN_MS, 10000);
   assert.equal(SCARE_LEASE_MS, 8000);
   assert.equal(DEATH_DELAY_MS, 10000);
   assert.equal(RETURN_FALL_MS, 1200);
@@ -472,13 +472,13 @@ test('reload preserves remaining countdown and overdue offline catch-up only arm
   const start = { ...createPet(START), happiness: 2.5 };
   const zeroAt = START + 2.5 * MINUTE;
   const storage = memoryStorage(JSON.stringify(start));
-  const lateTick = loadPet(storage, zeroAt + 15_000);
+  const lateTick = loadPet(storage, zeroAt + COUNTDOWN_MS / 4);
   assert.equal(lateTick.stage, 'countdown');
   assert.equal(lateTick.stageStartedAt, zeroAt);
   assert.equal(savePet(storage, lateTick), true);
-  const reloaded = loadPet(storage, zeroAt + 45_000);
+  const reloaded = loadPet(storage, zeroAt + 3 * COUNTDOWN_MS / 4);
   assert.equal(reloaded.stageStartedAt, zeroAt);
-  assert.equal(COUNTDOWN_MS - (reloaded.updatedAt - reloaded.stageStartedAt), 15_000);
+  assert.equal(COUNTDOWN_MS - (reloaded.updatedAt - reloaded.stageStartedAt), COUNTDOWN_MS / 4);
   assert.equal(claimPetScare(reloaded, zeroAt + COUNTDOWN_MS - 1).scare, false);
   assert.equal(claimPetScare(reloaded, zeroAt + COUNTDOWN_MS).scare, true);
   const overdue = loadPet(storage, START + 500 * HOUR);
@@ -491,6 +491,27 @@ test('reload preserves remaining countdown and overdue offline catch-up only arm
   assert.equal(claimed.pet.generation, 1);
   const direct = claimPetScare(start, overdue.updatedAt);
   assert.deepEqual(direct, claimed);
+});
+
+test('persisted version 4 countdowns keep elapsed time and claim an overdue scare once', () => {
+  const zeroAt = START + MINUTE;
+  const now = zeroAt + COUNTDOWN_MS + 1;
+  const persisted = {
+    ...createPet(START), version: 4, happiness: 0, stage: 'countdown',
+    stageStartedAt: zeroAt, updatedAt: zeroAt + 1000,
+  };
+  const storage = memoryStorage(JSON.stringify(persisted));
+  const loaded = loadPet(storage, now);
+  assert.equal(loaded.stage, 'countdown');
+  assert.equal(loaded.stageStartedAt, zeroAt);
+  assert.equal(savePet(storage, loaded), true);
+  const reloaded = loadPet(storage, now);
+  assert.equal(reloaded.stageStartedAt, zeroAt);
+  const claimed = claimPetScare(reloaded, now);
+  assert.equal(claimed.scare, true);
+  assert.equal(claimed.pet.stageStartedAt, now);
+  assert.equal(savePet(storage, claimed.pet), true);
+  assert.equal(claimPetScare(loadPet(storage, now), now).scare, false);
 });
 
 test('only the matching scare token enters recovery before a fresh generation', () => {
@@ -682,13 +703,13 @@ test('physical deaths disappear for ten seconds then fall for exactly 1.2 second
     assert.equal(dead.sleeping, false);
     assert.equal(dead.hidden, false);
     assert.equal(dead.paused, true);
-    assert.equal(dead.lastDeath.face, 'neutral', 'face uses pre-loss happiness');
+    assert.equal(dead.lastDeath.face, 'displeased', 'face uses pre-loss happiness');
     assert.deepEqual(getPetPresence(dead, START), {
       state: 'absent', progress: 0, reason: type, face: null, token: 'gesture-1', remainingMs: DEATH_DELAY_MS,
     });
     assert.equal(getPetPresence(dead, returnAt - 1).remainingMs, 1);
     assert.deepEqual(getPetPresence(dead, returnAt), {
-      state: 'falling', progress: 0, reason: type, face: 'neutral', token: 'gesture-1', remainingMs: RETURN_FALL_MS,
+      state: 'falling', progress: 0, reason: type, face: 'displeased', token: 'gesture-1', remainingMs: RETURN_FALL_MS,
     });
     assert.equal(getPetPresence(dead, returnAt + 600).progress, 0.5);
     assert.equal(getPetPresence(dead, returnAt + RETURN_FALL_MS - 1).state, 'falling');
@@ -715,7 +736,7 @@ test('deaths reaching zero arm immediately and absence never restarts or cancels
       const next = advancePet(dead, START + offset);
       assert.equal(next.stageStartedAt, START);
       assert.equal(next.happiness, 0);
-      assert.equal(claimPetScare(next, START + offset).scare, false);
+      assert.equal(claimPetScare(next, START + offset).scare, offset >= COUNTDOWN_MS);
     }
     assert.equal(claimPetScare(dead, START + COUNTDOWN_MS).scare, true);
     for (const eventType of ['throw', 'offscreen', 'lava', 'food']) {

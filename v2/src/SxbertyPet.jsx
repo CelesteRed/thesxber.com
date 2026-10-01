@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { advancePet, careForPet, createPet, claimPetScare, finishPetScare, getScareToken, loadPet, normalizePet, savePet, applyPetEvent, getPetPresence, takeDeathComment, UNLOCK_CLICKS, SXBERTY_STORAGE_KEY, COUNTDOWN_MS, DEATH_DELAY_MS } from "./verity-pet.js";
+import { advancePet, careForPet, createPet, claimPetScare, finishPetScare, getScareToken, loadPet, normalizePet, savePet, applyPetEvent, getPetPresence, takeDeathComment, UNLOCK_CLICKS, SXBERTY_STORAGE_KEY } from "./verity-pet.js";
 import { DEFAULT_SXBERTY_SETTINGS, SXBERTY_PHASES, getSxbertyPhase, normalizeSxbertySettings } from "../shared/sxberty.js";
 import { normalizePublicFood } from "../shared/sxberty-foods.js";
+import { normalizePublicVoice } from "../shared/sxberty-voices.js";
+import { createSxbertyVoicePlayer } from "./sxberty-voice-player.js";
 import { readLatestPet, withPetLock } from "./sxberty-storage.js";
 import SxbertySprite from "./SxbertySprite";
 import SxbertyDoomScene from "./SxbertyDoomScene";
 import SxbertyPlayground from "./SxbertyPlayground";
-import { getDoomPresentation } from "./sxberty-doom.js";
+import SxbertyConsole from "./SxbertyConsole";
+import SxbertyEscalation from "./SxbertyEscalation";
+import { chooseReturnLine } from "./sxberty-return-lines.js";
 import monsterImage from "./assets/verity/monster.webp";
 import "./sxberty-pet.css";
 
@@ -15,11 +19,6 @@ import "./sxberty-pet.css";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const phaseLabel = (phase) => SXBERTY_PHASES.find(item => item.id === phase)?.label || "Happy";
 const happinessValue = (pet) => Math.ceil(pet.happiness);
-const RETURN_LINES = {
-  offscreen: "You threw Sxberty right off the page. That was not a shortcut.",
-  lava: "That was lava! Sxberty lost half his happiness in that bucket.",
-  monster: "Sxberty is back after the monster got him. Let's not do that again.",
-};
 
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
@@ -35,11 +34,24 @@ export function useSxbertyPet({ blocked = false } = {}) {
   const [settings, setSettings] = useState(DEFAULT_SXBERTY_SETTINGS);
   const [foods, setFoods] = useState([]);
   const foodsRef = useRef([]);
+  const [voices, setVoices] = useState([]);
+  const voicesRef = useRef([]);
+  const voicePlayer = useRef(null);
+  const voiceRequest = useRef(0);
+  const voiceEvent = useRef(0);
+  const voiceIndexes = useRef({});
+  const activeVoice = useRef(null);
+  const pendingVoice = useRef(null);
+  const previousReturnLines = useRef({});
+  const speechRef = useRef(speech);
+  speechRef.current = speech;
+  const [voiceStatus, setVoiceStatus] = useState({ enabled: false, playing: false, blocked: false });
   const speechBlocked = useRef(blocked);
   speechBlocked.current = blocked;
   const clicks = useRef(0);
   const trigger = useRef(null);
   const currentPet = useRef(pet);
+  const escalationOrigin = useRef(null);
   const entered = useRef(false);
   const mounted = useRef(true);
   const localOnly = useRef(false);
@@ -47,8 +59,86 @@ export function useSxbertyPet({ blocked = false } = {}) {
   const phraseIndexes = useRef({});
   const adopted = Boolean(pet);
   const presence = getPetPresence(pet, now);
-  const speak = useCallback((text, announce = true, reason = null) => setSpeech({ text, announce, reason }), []);
+  const canPlayVoice = useCallback(() => {
+    const current = currentPet.current;
+    return Boolean(current && !document.hidden && !speechBlocked.current && !current.hidden && !current.sleeping
+      && !["scaring", "recovering"].includes(current.stage) && getPetPresence(current).state !== "absent");
+  }, []);
+  const stopVoice = useCallback(() => {
+    voiceRequest.current++;
+    pendingVoice.current = null;
+    activeVoice.current = null;
+    voicePlayer.current?.stop();
+  }, []);
+  const playSpeech = useCallback(async event => {
+    const player = voicePlayer.current;
+    const sequence = ++voiceRequest.current;
+    const clips = voicesRef.current.filter(clip => clip.trigger === event?.voiceTrigger);
+    if (!player?.isEnabled() || !event?.voiceTrigger || !canPlayVoice() || !clips.length) {
+      activeVoice.current = null;
+      pendingVoice.current = null;
+      player?.stop();
+      return false;
+    }
+    const index = voiceIndexes.current[event.voiceTrigger] || 0;
+    const clip = clips[index % clips.length];
+    voiceIndexes.current[event.voiceTrigger] = index + 1;
+    pendingVoice.current = { id: clip.id, sequence };
+    try {
+      const started = await player.play({ url: `${API_BASE}${clip.url}`, durationMs: clip.durationMs });
+      if (started && mounted.current && sequence === voiceRequest.current && canPlayVoice()) {
+        activeVoice.current = clip.id;
+        setSpeech(current => current?.id === event.id
+          ? { ...current, text: clip.caption || current.text, voiceDurationMs: clip.durationMs } : current);
+      }
+      return started;
+    } catch { return false; }
+    finally {
+      if (pendingVoice.current?.sequence === sequence) pendingVoice.current = null;
+    }
+  }, [canPlayVoice]);
+  const speak = useCallback((text, announce = true, reason = null, voiceTrigger = null) => {
+    const event = { id: ++voiceEvent.current, text, announce, reason, voiceTrigger: voiceTrigger || (reason ? `return-${reason}` : null) };
+    speechRef.current = event;
+    setSpeech(event);
+    void playSpeech(event);
+  }, [playSpeech]);
+  useEffect(() => {
+    const player = createSxbertyVoicePlayer({
+      onStatus: status => {
+        if (!status.playing) activeVoice.current = null;
+        if (mounted.current) setVoiceStatus(status);
+      },
+    });
+    voicePlayer.current = player;
+    const visibility = () => { if (document.hidden) stopVoice(); };
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      voiceRequest.current++;
+      pendingVoice.current = null;
+      activeVoice.current = null;
+      document.removeEventListener("visibilitychange", visibility);
+      player.destroy();
+      if (voicePlayer.current === player) voicePlayer.current = null;
+    };
+  }, [stopVoice]);
+  useEffect(() => {
+    if (!canPlayVoice()) stopVoice();
+  }, [blocked, pet?.hidden, pet?.sleeping, pet?.stage, presence.state, canPlayVoice, stopVoice]);
+  const toggleVoice = useCallback(async () => {
+    const player = voicePlayer.current;
+    if (!player) return;
+    if (player.isEnabled()) { stopVoice(); player.disable(); return; }
+    // enable() begins its silent unlock synchronously inside this click.
+    if (await player.enable() && mounted.current && voicePlayer.current === player) {
+      await playSpeech(speechRef.current);
+    }
+  }, [playSpeech, stopVoice]);
   const commit = useCallback((next, persist = true) => {
+    if (next?.stage === "countdown" && currentPet.current?.stage !== "countdown") {
+      const rect = document.querySelector(".sxberty-world-pet")?.getBoundingClientRect();
+      escalationOrigin.current = rect?.width ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+    }
     currentPet.current = next;
     setPet(next);
     if (persist && next) {
@@ -63,7 +153,7 @@ export function useSxbertyPet({ blocked = false } = {}) {
   const settle = useCallback((candidate, time) => {
     // Check inside the lock: the tab may have become hidden while queued.
     // Background hydration can catch up time, but cannot steal the scare.
-    const result = document.hidden
+    const result = document.hidden || speechBlocked.current
       ? { pet: advancePet(candidate, time), scare: false }
       : claimPetScare(candidate, time);
     const canSpeak = !document.hidden && !speechBlocked.current && !result.pet?.hidden && !result.scare;
@@ -74,13 +164,19 @@ export function useSxbertyPet({ blocked = false } = {}) {
     if (result.scare) {
       setOpen(false);
       setSpeech(null);
+      stopVoice();
       setScare(getScareToken(result.pet));
     } else {
       setScare(current => current && current !== getScareToken(result.pet) ? null : current);
-      if (returnComment.reason) speak(RETURN_LINES[returnComment.reason], true, returnComment.reason);
+      if (returnComment.reason) {
+        const reason = returnComment.reason;
+        const line = chooseReturnLine(reason, { previous: previousReturnLines.current[reason] });
+        previousReturnLines.current[reason] = line;
+        speak(line, true, reason);
+      }
     }
     return result.pet;
-  }, [commit, speak]);
+  }, [commit, speak, stopVoice]);
   const update = useCallback((action) => withPetLock(() => {
     if (!mounted.current) return null;
     const time = Date.now();
@@ -102,12 +198,12 @@ export function useSxbertyPet({ blocked = false } = {}) {
     const announcedReturn = outcome.pet?.lastDeath && !outcome.pet.lastDeath.announced
       && next?.lastDeath?.id === outcome.pet.lastDeath.id && next.lastDeath.announced;
     if (outcome.accepted && !announcedReturn) {
-      if (food) speak(`Sxberty ate ${food.name}.`);
-      else if (event.type === "throw") speak("Sxberty isn't a bowling ball.");
-      else { setOpen(false); setSpeech(null); }
+      if (food) speak(`Sxberty ate ${food.name}.`, true, null, "food");
+      else if (event.type === "throw") speak("Sxberty isn't a bowling ball.", true, null, "throw");
+      else { setOpen(false); setSpeech(null); stopVoice(); }
     }
     return outcome.accepted;
-  }), [latestPet, settle, speak]);
+  }), [latestPet, settle, speak, stopVoice]);
 
   useEffect(() => {
     mounted.current = true;
@@ -152,6 +248,15 @@ export function useSxbertyPet({ blocked = false } = {}) {
               foodsRef.current = items;
               setFoods(items);
             }).catch(() => {}),
+          fetch(`${API_BASE}/api/sxberty-voices`, { signal: controller.signal })
+            .then(response => response.ok ? response.json() : null)
+            .then(data => {
+              if (!Array.isArray(data?.items) || controller.signal.aborted) return;
+              const items = data.items.map(normalizePublicVoice).filter(Boolean);
+              voicesRef.current = items;
+              setVoices(items);
+              if ([activeVoice.current, pendingVoice.current?.id].some(id => id && !items.some(item => item.id === id))) stopVoice();
+            }).catch(() => {}),
         ]);
       } catch { /* Built-in phrases and the last valid food catalog remain usable. */ }
       finally { pending = false; }
@@ -160,11 +265,12 @@ export function useSxbertyPet({ blocked = false } = {}) {
     const timer = adopted ? setInterval(load, 60_000) : null;
     document.addEventListener("visibilitychange", load);
     return () => { controller.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", load); };
-  }, [adopted]);
+  }, [adopted, stopVoice]);
 
   useEffect(() => {
     if (!speech) return;
-    const timer = setTimeout(() => setSpeech(null), speech.reason ? 8000 : 6500);
+    const duration = Math.max(speech.reason ? 8000 : 6500, Math.min(31_000, (speech.voiceDurationMs || 0) + 300));
+    const timer = setTimeout(() => setSpeech(null), duration);
     return () => clearTimeout(timer);
   }, [speech]);
   useEffect(() => {
@@ -184,7 +290,7 @@ export function useSxbertyPet({ blocked = false } = {}) {
     const index = phraseIndexes.current[phase] || 0;
     phraseIndexes.current[phase] = index + 1;
     lastPhase.current = phase;
-    speak(phrases[index % phrases.length], announce);
+    speak(phrases[index % phrases.length], announce, null, phase);
   }, [settings, speak]);
   useEffect(() => {
     lastPhase.current = null;
@@ -230,7 +336,8 @@ export function useSxbertyPet({ blocked = false } = {}) {
   useEffect(() => {
     if (scare && getScareToken(pet) !== scare) setScare(null);
   }, [pet, scare]);
-  return { pet, now, foods, onEvent, open, setOpen, saved, speech, sayPhase, visit, care, trigger, scare, dismissScare };
+  return { pet, now, foods, onEvent, open, setOpen, saved, speech, sayPhase, visit, care, trigger, scare, dismissScare,
+    voiceStatus, toggleVoice, voiceCount: voices.length, escalationOrigin: escalationOrigin.current };
 }
 
 function useReducedMotion() {
@@ -245,7 +352,17 @@ function useReducedMotion() {
 }
 
 
-function HappinessHud({ pet, onOpen, blocked }) {
+function VoiceToggle({ status, onToggle, count, compact = false }) {
+  const label = status.enabled ? "Mute Sxberty voice lines" : "Enable Sxberty voice lines";
+  return <button type="button" className={compact ? "sxberty-voice-toggle" : "sxberty-voice-button"}
+    onClick={onToggle} aria-label={label} title={label} aria-pressed={status.enabled} data-playing={status.playing}
+    disabled={!count && !status.enabled}>
+    <i className={`fa-solid ${status.enabled ? "fa-volume-high" : "fa-volume-xmark"}`} aria-hidden="true" />
+    {!compact && (status.enabled ? " Mute voice" : " Enable voice")}
+  </button>;
+}
+
+function HappinessHud({ pet, onOpen, blocked, voiceStatus, toggleVoice, voiceCount }) {
   const phase = getSxbertyPhase(pet.happiness);
   return <aside className="sxberty-hud" hidden={blocked} aria-label="Sxberty happiness" data-phase={phase}>
     <button type="button" onClick={onOpen} aria-haspopup="dialog" title={`Sxberty happiness — ${phaseLabel(phase)}`}
@@ -257,63 +374,10 @@ function HappinessHud({ pet, onOpen, blocked }) {
       </span>
       <strong className="sxberty-hud-value" aria-hidden="true">{happinessValue(pet)}%</strong>
     </button>
+    {voiceCount > 0 && <VoiceToggle status={voiceStatus} onToggle={toggleVoice} count={voiceCount} compact />}
   </aside>;
 }
 
-function PetDialog({ pet, now, saved, speech, onClose, care, sayPhase, reduced, trigger }) {
-  const dialogRef = useRef(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    const returnTo = trigger.current;
-    dialog.showModal();
-    dialog.querySelector(".sxberty-close").focus();
-    return () => {
-      dialog.close();
-      const target = returnTo instanceof HTMLElement && returnTo.isConnected && !returnTo.closest("[hidden]") ? returnTo : document.querySelector(".top-domain");
-      target?.focus({ preventScroll: true });
-    };
-  }, []);
-  const mood = phaseLabel(getSxbertyPhase(pet.happiness));
-  const age = Math.max(1, Math.floor((Date.now() - pet.adoptedAt) / 86_400_000) + 1);
-  const doomed = pet.stage === "countdown";
-  const presence = getPetPresence(pet, now);
-  const unavailable = pet.stage !== "alive" || presence.state !== "present";
-  return <dialog ref={dialogRef} className="sxberty-dialog" aria-labelledby="sxberty-title"
-    onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="sxberty-card">
-      <button className="sxberty-close" type="button" aria-label="Close Sxberty care" onClick={onClose}>×</button>
-      <p className="sxberty-eyebrow">Your personal helper friend</p>
-      <div className="sxberty-intro">
-        <SxbertySprite happiness={pet.happiness} face={presence.face} size={84} />
-        <div><h2 id="sxberty-title">Sxberty</h2><p>{presence.state === "absent" ? "Returning soon" : presence.state === "falling" ? "Falling back in" : pet.sleeping ? `Sleeping · ${mood}` : mood}</p><small>Buddy {pet.generation} · Day {age} · Bond {pet.bond}</small></div>
-      </div>
-      <p className="sxberty-dialog-speech" role="status">{speech?.text || `Sxberty is feeling ${mood.toLowerCase()}.`}</p>
-      <div className="sxberty-needs">
-        {[["fullness", "Fullness"], ["happiness", "Happiness"], ["energy", "Energy"]].map(([key, label]) => <label key={key}>
-          <span>{label}<strong>{key === "happiness" ? happinessValue(pet) : Math.round(pet[key])}<small> / 100</small></strong></span>
-          <meter min="0" max="100" low="25" high="80" optimum="100" value={pet[key]}>{Math.round(pet[key])}%</meter>
-        </label>)}
-      </div>
-      <div className="sxberty-care-actions">
-        <button type="button" onClick={() => care("play")} disabled={unavailable || pet.sleeping || pet.energy < 12}>Play<small>{pet.energy < 12 ? "Needs a nap first" : "+18 happiness"}</small></button>
-        <button type="button" onClick={() => care("pet")} disabled={unavailable || pet.sleeping}>Pet<small>+8 happiness</small></button>
-        <button type="button" onClick={() => care("sleep")} disabled={unavailable}>{pet.sleeping ? "Wake up" : "Sleep"}<small>{pet.sleeping ? "Hello again" : "Recharge energy"}</small></button>
-      </div>
-      <div className="sxberty-options">
-        <button type="button" disabled={pet.sleeping || presence.state !== "present"} onClick={() => sayPhase(pet)}>Talk to Sxberty</button>
-        <button type="button" onClick={() => care("pause")} aria-pressed={pet.paused} disabled={reduced}>{pet.paused ? "Resume roaming" : "Pause roaming"}</button>
-        <button type="button" onClick={() => care("hide")}>Hide pet</button>
-      </div>
-      <p className="sxberty-food-help">Wait for food to fall, then drag a snack onto Sxberty. Each minute has a 20% chance of a food drop. You can also focus a dropped snack and press Enter to feed him.</p>
-      <p className="sxberty-note">Ordinary throws cost 1 happiness. Off-screen throws cost only 5; lava takes half his current happiness. After a death, he falls back in {DEATH_DELAY_MS / 1000} seconds.</p>
-      <p className="sxberty-warning">At 0 happiness, a {COUNTDOWN_MS / 1000}-second countdown changes the page from gray to red. Then comes the monster, and a new Sxberty falls back after {DEATH_DELAY_MS / 1000} seconds.</p>
-      {doomed && <p className="sxberty-warning">Time left: <output role="timer" aria-live="off">{getDoomPresentation(pet, now).time}</output>. It's too late to save this Sxberty. Hiding, pausing or refreshing will not reset the timer.</p>}
-      {reduced && <p className="sxberty-note">Roaming and scare motion are off for your reduced-motion preference.</p>}
-      <p className="sxberty-save-note" role="status">{saved ? "Saved in this browser. No account needed." : "Browser storage is unavailable. Progress lasts for this visit only."}</p>
-      <p className="sxberty-note">Click thesxber.com to visit again. Hiding never resets his stats.</p>
-    </div>
-  </dialog>;
-}
 
 function MonsterScare({ onClose, reduced }) {
   const dialogRef = useRef(null);
@@ -345,19 +409,13 @@ function MonsterScare({ onClose, reduced }) {
   </dialog>;
 }
 
-function ReturnNotice({ presence }) {
-  const seconds = Math.ceil(presence.remainingMs / 1000);
-  return <aside className="sxberty-return-notice" aria-label="Sxberty return">
-    <span>Sxberty is coming back</span>
-    <output role="timer" aria-live="off">{seconds > 0 ? `${seconds}s` : "Returning…"}</output>
-  </aside>;
-}
 
-export default function SxbertyPet({ pet, now, foods, onEvent, open, setOpen, saved, speech, sayPhase, care, trigger, scare, dismissScare, blocked = false }) {
+export default function SxbertyPet({ pet, now, foods, onEvent, open, setOpen, saved, speech, sayPhase, care, trigger, scare, dismissScare, voiceStatus, toggleVoice, voiceCount, escalationOrigin, blocked = false }) {
   const reduced = useReducedMotion();
   const presence = getPetPresence(pet, now);
-  const available = pet && pet.stage !== "scaring";
-  const roaming = pet && ["alive", "countdown"].includes(pet.stage) && presence.state === "present" && !pet.hidden && !pet.sleeping && !pet.paused && !open && !blocked && !scare;
+  const growing = pet?.stage === "countdown";
+  const available = pet && !["countdown", "scaring"].includes(pet.stage);
+  const roaming = pet && pet.stage === "alive" && presence.state === "present" && !pet.hidden && !pet.sleeping && !pet.paused && !open && !blocked && !scare;
   useEffect(() => {
     if (!roaming) return;
     const timer = setInterval(() => { if (!document.hidden) sayPhase(undefined, false); }, 35_000);
@@ -366,12 +424,14 @@ export default function SxbertyPet({ pet, now, foods, onEvent, open, setOpen, sa
   if (!pet) return null;
   const onOpen = event => { trigger.current = event.currentTarget; setOpen(true); };
   return <>
-    <SxbertyDoomScene pet={pet} now={now} obscured={blocked || open || Boolean(scare)} />
-    {!pet.hidden && <HappinessHud pet={pet} onOpen={onOpen} blocked={blocked || open || Boolean(scare)} />}
+    <SxbertyDoomScene pet={pet} now={now} />
+    {!pet.hidden && <HappinessHud pet={pet} onOpen={onOpen} blocked={blocked || Boolean(scare)} voiceStatus={voiceStatus} toggleVoice={toggleVoice} voiceCount={voiceCount} />}
     <SxbertyPlayground key={pet.generation} pet={pet} foods={foods} apiBase={API_BASE} speech={speech}
-      onOpen={onOpen} onEvent={onEvent} blocked={blocked || open || pet.hidden || Boolean(scare)} reduced={reduced} />
-    {available && open && !blocked && !scare && <PetDialog pet={pet} now={now} saved={saved} speech={speech} onClose={() => setOpen(false)} care={care} sayPhase={sayPhase} reduced={reduced} trigger={trigger} />}
-    {!pet.hidden && presence.state === "absent" && !blocked && !open && !scare && <ReturnNotice presence={presence} />}
+      onOpen={onOpen} onEvent={onEvent} blocked={blocked || growing || pet.hidden || Boolean(scare)} reduced={reduced} />
+    <SxbertyConsole pet={pet} now={now} isOpen={Boolean(available && open && !blocked && !scare && !pet.hidden)}
+      speech={speech} saved={saved} care={care} sayPhase={sayPhase} reduced={reduced} trigger={trigger} onClose={() => setOpen(false)}
+      voiceStatus={voiceStatus} voiceControl={<VoiceToggle status={voiceStatus} onToggle={toggleVoice} count={voiceCount} />} />
+    {growing && !blocked && <SxbertyEscalation pet={pet} now={now} origin={escalationOrigin} reduced={reduced} />}
     {scare && <MonsterScare key={scare} onClose={dismissScare} reduced={reduced} />}
   </>;
 }

@@ -15,6 +15,8 @@ import { updateSxbertyDraft } from "./sxberty-drafts.js";
 import { validateSxbertyPatch } from "../shared/sxberty.js";
 import { validateSxbertyFoodPatch } from "../shared/sxberty-foods.js";
 import { sxbertyFoodDraftKey, updateSxbertyFoodDraft } from "./sxberty-food-drafts.js";
+import { validateSxbertyVoicePatch } from "../shared/sxberty-voices.js";
+import { createSxbertyVoiceVersionGuard, sxbertyVoiceDraftKey, updateSxbertyVoiceDraft } from "./sxberty-voice-drafts.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -223,6 +225,15 @@ function AdminPage() {
   const [foodMessage, setFoodMessage] = useState("");
   const foodLoadVersion = useRef(0);
   const foodMutationActive = useRef(false);
+  const [sxbertyVoices, setSxbertyVoices] = useState(null);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceLoadError, setVoiceLoadError] = useState("");
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceActionError, setVoiceActionError] = useState("");
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const voiceVersions = useRef(createSxbertyVoiceVersionGuard());
+  const voiceMutationActive = useRef(false);
+  const voiceAuthenticated = useRef(false);
   const [syncingVideos, setSyncingVideos] = useState(false);
   const [videoMessage, setVideoMessage] = useState("");
   const [activity, setActivity] = useState([]);
@@ -359,8 +370,66 @@ function AdminPage() {
     }
   };
 
+  const changeVoice = (entry, changes) => {
+    const key = sxbertyVoiceDraftKey(entry.id);
+    setDrafts(current => {
+      const next = { ...current }, draft = updateSxbertyVoiceDraft(entry, current[key], changes);
+      if (Object.keys(draft).length) next[key] = draft; else delete next[key];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+  };
+  const invalidateVoiceLoad = () => {
+    setVoiceLoading(false);
+    return voiceVersions.current.invalidate();
+  };
+  const mutateVoice = async (method, entry, formData) => {
+    if (!voiceAuthenticated.current || savingAll || foodMutationActive.current || voiceMutationActive.current) return false;
+    voiceMutationActive.current = true;
+    const version = invalidateVoiceLoad();
+    setVoiceBusy(true);
+    setVoiceActionError("");
+    setVoiceMessage(method === "POST" ? "Uploading voice line…" : "Removing voice line…");
+    try {
+      const endpoint = `/api/admin/sxberty-voices${entry ? `/${encodeURIComponent(entry.id)}` : ""}`;
+      const response = await fetch(apiUrl(endpoint), { method, credentials: "include", ...(formData ? { body: formData } : {}) });
+      const data = await response.json().catch(() => ({}));
+      if (!voiceVersions.current.isCurrent(version) || !voiceAuthenticated.current) return false;
+      if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
+      if (!response.ok) throw new Error(data.error || "Unable to update Sxberty voice lines.");
+      if (method === "POST" && !data.item) throw new Error("The uploaded voice line was not returned. Retry loading voice lines.");
+      setVoiceLoadError("");
+      if (method === "POST") {
+        setSxbertyVoices(current => [...(current || []).filter(item => item.id !== data.item.id), data.item]);
+        setVoiceMessage(`Uploaded ${data.item.name}. Voice line is ${data.item.enabled ? "enabled" : "disabled"}.`);
+      } else {
+        setSxbertyVoices(current => (current || []).filter(item => item.id !== entry.id));
+        const key = sxbertyVoiceDraftKey(entry.id);
+        setDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+        setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+        setVoiceMessage(`Removed ${entry.name}.`);
+      }
+      loadActivity().catch(() => {});
+      return true;
+    } catch (error) {
+      if (voiceVersions.current.isCurrent(version) && voiceAuthenticated.current) {
+        setVoiceMessage("");
+        setVoiceActionError(error.message);
+      }
+      return false;
+    } finally {
+      if (voiceVersions.current.isCurrent(version)) {
+        voiceMutationActive.current = false;
+        setVoiceBusy(false);
+      }
+    }
+  };
+
   const saveAll = async () => {
-    if (savingAll || foodMutationActive.current || !dirtyCount) return;
+    if (savingAll || foodMutationActive.current || voiceMutationActive.current || !dirtyCount) return;
+    const hasVoiceDrafts = Object.keys(drafts).some(key => key.startsWith("sxberty-voice:"));
+    const voiceSaveVersion = hasVoiceDrafts ? invalidateVoiceLoad() : null;
+    if (hasVoiceDrafts) voiceMutationActive.current = true;
     setSavingAll(true);
     setSaveErrors({});
     const failures = {};
@@ -371,18 +440,27 @@ function AdminPage() {
         const live = filename === "live";
         const sxberty = filename === "sxberty";
         const food = filename.startsWith("sxberty-food:");
+        const voice = filename.startsWith("sxberty-voice:");
         const video = filename.startsWith("video:");
         const settings = filename === "emoji-settings";
-        const endpoint = food ? `/api/admin/sxberty-foods/${encodeURIComponent(filename.slice(13))}` : sxberty ? "/api/admin/sxberty" : live ? "/api/admin/live" : settings ? "/api/admin/emoji-settings" : video ? `/api/admin/videos/${encodeURIComponent(filename.slice(6))}` : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
-        const body = food ? validateSxbertyFoodPatch(draft) : sxberty ? validateSxbertyPatch(draft) : draft;
+        const endpoint = voice ? `/api/admin/sxberty-voices/${encodeURIComponent(filename.slice(14))}` : food ? `/api/admin/sxberty-foods/${encodeURIComponent(filename.slice(13))}` : sxberty ? "/api/admin/sxberty" : live ? "/api/admin/live" : settings ? "/api/admin/emoji-settings" : video ? `/api/admin/videos/${encodeURIComponent(filename.slice(6))}` : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const body = voice ? validateSxbertyVoicePatch(draft) : food ? validateSxbertyFoodPatch(draft) : sxberty ? validateSxbertyPatch(draft) : draft;
         if (food) invalidateFoodLoad();
         const response = await fetch(apiUrl(endpoint), {
           method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
+        if (voice && (!voiceVersions.current.isCurrent(voiceSaveVersion) || !voiceAuthenticated.current)) {
+          setSavingAll(false);
+          return;
+        }
         if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
         if (!response.ok) throw new Error(data.error || "Unable to save this item. Try again.");
-        if (food) {
+        if (voice) {
+          if (!data.item) throw new Error("The saved voice line was not returned. Retry Save all.");
+          setVoiceLoadError("");
+          setSxbertyVoices(current => (current || []).map(entry => entry.id === filename.slice(14) ? data.item : entry));
+        } else if (food) {
           if (!data.item) throw new Error("The saved food was not returned. Retry Save all.");
           invalidateFoodLoad();
           setFoodLoadError("");
@@ -402,6 +480,7 @@ function AdminPage() {
         saved++;
       } catch (error) { failures[filename] = error.message; }
     }
+    if (hasVoiceDrafts && voiceVersions.current.isCurrent(voiceSaveVersion)) voiceMutationActive.current = false;
     setSaveErrors(failures);
     setSavingAll(false);
     setMessage(Object.keys(failures).length ? `${saved} saved. Unsaved entries are kept below; fix any errors and retry Save all.` : `Saved all changes (${saved} ${saved === 1 ? "item" : "items"}).`);
@@ -464,6 +543,45 @@ function AdminPage() {
       if (version === foodLoadVersion.current) setFoodLoading(false);
     }
   }, []);
+
+  const loadSxbertyVoices = useCallback(async () => {
+    if (!voiceAuthenticated.current || voiceMutationActive.current) return;
+    const version = voiceVersions.current.begin();
+    setVoiceLoading(true);
+    setVoiceLoadError("");
+    try {
+      const response = await fetch(apiUrl("/api/admin/sxberty-voices"), { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to load Sxberty voice lines.");
+      if (!Array.isArray(data.items)) throw new Error("The voice catalog is unavailable. Please retry.");
+      if (voiceVersions.current.isCurrent(version) && voiceAuthenticated.current) setSxbertyVoices(data.items);
+    } catch (error) {
+      if (voiceVersions.current.isCurrent(version) && voiceAuthenticated.current) setVoiceLoadError(error.message);
+    } finally {
+      if (voiceVersions.current.isCurrent(version) && voiceAuthenticated.current) setVoiceLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    voiceAuthenticated.current = Boolean(user);
+    if (user) {
+      loadSxbertyVoices();
+    } else {
+      voiceVersions.current.invalidate();
+      voiceMutationActive.current = false;
+      setSxbertyVoices(null);
+      setVoiceLoading(false);
+      setVoiceLoadError("");
+      setVoiceBusy(false);
+      setVoiceActionError("");
+      setVoiceMessage("");
+    }
+    return () => {
+      voiceAuthenticated.current = false;
+      voiceVersions.current.invalidate();
+      voiceMutationActive.current = false;
+    };
+  }, [user, loadSxbertyVoices]);
 
   const loadEmojis = useCallback(async () => {
     const response = await fetch(apiUrl("/api/admin/emojis"), { credentials: "include" });
@@ -564,6 +682,15 @@ function AdminPage() {
       setFoodLoadError("");
       setFoodActionError("");
       setFoodMessage("");
+      voiceAuthenticated.current = false;
+      voiceVersions.current.invalidate();
+      voiceMutationActive.current = false;
+      setSxbertyVoices(null);
+      setVoiceLoading(false);
+      setVoiceLoadError("");
+      setVoiceBusy(false);
+      setVoiceActionError("");
+      setVoiceMessage("");
       setVideoMessage("");
       setDrafts({});
       setSaveErrors({});
@@ -639,7 +766,7 @@ function AdminPage() {
       <section className="admin-card admin-dashboard">
         <div className="admin-toolbar">
           <a className="admin-back" href="/">← Back to thesxber.com</a>
-          <button className="admin-logout" type="button" onClick={logout} disabled={savingAll || foodBusy}>Sign out</button>
+          <button className="admin-logout" type="button" onClick={logout} disabled={savingAll || foodBusy || voiceBusy}>Sign out</button>
         </div>
         <div className="admin-user">
           {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <i className="fa-brands fa-discord" aria-hidden="true" />}
@@ -654,13 +781,18 @@ function AdminPage() {
           message={videoMessage} onSync={syncVideos} onRefresh={refreshVideoStatus} onChange={changeVideo} />
         <LiveAdminSection data={liveData} draft={drafts.live} error={saveErrors.live} busy={savingAll} onChange={changeLive} />
         <SxbertyAdminSection settings={sxbertySettings} draft={drafts.sxberty} error={saveErrors.sxberty}
-          loading={sxbertyLoading} loadError={sxbertyLoadError} busy={savingAll || foodBusy}
+          loading={sxbertyLoading} loadError={sxbertyLoadError} busy={savingAll || foodBusy || voiceBusy}
           onChange={changeSxberty} onRetry={loadSxberty}
           foods={{ items: sxbertyFoods || [], drafts, errors: saveErrors, loading: foodLoading,
             loadError: foodLoadError, actionError: foodActionError, message: foodMessage,
             ready: sxbertyFoods !== null, apiBase: API_BASE, onRetry: loadSxbertyFoods,
             onChange: changeFood, onUpload: formData => mutateFood("POST", null, formData),
-            onRemove: entry => mutateFood("DELETE", entry) }} />
+            onRemove: entry => mutateFood("DELETE", entry) }}
+          voices={{ items: sxbertyVoices || [], drafts, errors: saveErrors, loading: voiceLoading,
+            loadError: voiceLoadError, actionError: voiceActionError, message: voiceMessage,
+            ready: sxbertyVoices !== null, apiBase: API_BASE, onRetry: loadSxbertyVoices,
+            onChange: changeVoice, onUpload: formData => mutateVoice("POST", null, formData),
+            onUploadError: setVoiceActionError, onRemove: entry => mutateVoice("DELETE", entry) }} />
         <AdminSection title="Upload fanart">
         <form className="admin-form" onSubmit={upload}>
           <fieldset className="admin-upload-fields" disabled={savingAll}>
@@ -714,7 +846,7 @@ function AdminPage() {
         <span aria-live="polite">{savingAll ? "Saving changes…" : `${dirtyCount} ${dirtyCount === 1 ? "item" : "items"} changed`}</span>
         {Object.keys(saveErrors).length > 0 && <small role="alert">Some changes could not save. Check the marked entries and retry.</small>}
         {Object.values(saveErrors).some(error => error.includes("login has expired")) && <a href={apiUrl("/api/auth/discord")} target="_blank" rel="noreferrer">Sign in again in a new tab, then retry</a>}
-        <button type="button" onClick={saveAll} disabled={savingAll || foodBusy}>{savingAll ? "Saving…" : "Save all"}</button>
+        <button type="button" onClick={saveAll} disabled={savingAll || foodBusy || voiceBusy}>{savingAll ? "Saving…" : "Save all"}</button>
       </div>}
     </main>
   );

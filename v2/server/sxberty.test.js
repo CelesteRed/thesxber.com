@@ -65,7 +65,7 @@ const invalidBodies = [
 
 test("phase boundaries and defaults reflect the complete Sxberty personality progression", () => {
   assert.deepEqual(SXBERTY_PHASES.map(({ id }) => id), ["happy", "uneasy", "neutral", "upset", "angry", "abandoned"]);
-  for (const [happiness, phase] of [[100, "happy"], [80, "happy"], [79.99, "uneasy"], [60, "uneasy"], [59.99, "neutral"], [40, "neutral"], [39.99, "upset"], [20, "upset"], [19.99, "angry"], [0.01, "angry"], [0, "abandoned"], [-1, "abandoned"], [101, "happy"], [NaN, "happy"], [undefined, "happy"]]) {
+  for (const [happiness, phase] of [[100, "happy"], [80.01, "happy"], [80, "uneasy"], [79.99, "uneasy"], [60, "uneasy"], [59.99, "neutral"], [40, "neutral"], [39.99, "upset"], [20, "upset"], [19.99, "angry"], [0.01, "angry"], [0, "abandoned"], [-1, "abandoned"], [101, "happy"], [NaN, "happy"], [undefined, "happy"]]) {
     assert.equal(getSxbertyPhase(happiness), phase);
   }
   assert.deepEqual(validateSxbertyPatch(DEFAULT_SXBERTY_SETTINGS), DEFAULT_SXBERTY_SETTINGS);

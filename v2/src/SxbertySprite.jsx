@@ -12,12 +12,11 @@ const faces = { normal, neutral, displeased, angry, abandoned };
 // All layers share a registered 1000×1000 canvas. Rotate/scale the wrapper,
 // never the face separately, so the hair and facial features stay aligned.
 export default forwardRef(function SxbertySprite({ happiness, face = null, size = 76, className = "" }, ref) {
-  const { from, to, mix } = getFaceBlend(happiness, face);
+  const { to } = getFaceBlend(happiness, face);
   return <span ref={ref} className={`sxberty-sprite ${className}`} style={{ width: size, height: size }} aria-hidden="true" data-face={to}>
     <img className="sxberty-base" src={base} width="1000" height="1000" alt="" draggable="false" />
     <span className="sxberty-face-layers">
-      <img src={faces[from]} width="1000" height="1000" alt="" draggable="false" style={{ opacity: 1 - mix }} />
-      {from !== to && <img src={faces[to]} width="1000" height="1000" alt="" draggable="false" style={{ opacity: mix }} />}
+      <img src={faces[to]} width="1000" height="1000" alt="" draggable="false" />
     </span>
   </span>;
 });

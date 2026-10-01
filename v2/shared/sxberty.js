@@ -1,4 +1,5 @@
-// Upper bounds are exclusive except for happy; angry excludes zero.
+// Happy excludes its 80% lower bound; uneasy includes both 60% and 80%.
+// Other upper bounds are exclusive, and angry excludes zero.
 export const SXBERTY_PHASES = Object.freeze([
   { id: "happy", label: "Happy", min: 80, max: 100 },
   { id: "uneasy", label: "Uneasy", min: 60, max: 80 },
@@ -79,7 +80,7 @@ export function getSxbertyPhase(happiness) {
   if (value < 20) return "angry";
   if (value < 40) return "upset";
   if (value < 60) return "neutral";
-  if (value < 80) return "uneasy";
+  if (value <= 80) return "uneasy";
   return "happy";
 }
 

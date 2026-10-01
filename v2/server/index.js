@@ -30,6 +30,7 @@ import { registerVideoRoutes } from "./video-routes.js";
 import { registerSiteAssetRecovery } from "./site-assets.js";
 import { registerSxbertyRoutes } from "./sxberty-routes.js";
 import { registerSxbertyFoodRoutes } from "./sxberty-food-routes.js";
+import { registerSxbertyVoiceRoutes } from "./sxberty-voice-routes.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -99,7 +100,8 @@ async function requireAdmin(request, response, next) {
 }
 
 registerSxbertyFoodRoutes(app, requireAdmin);
-// Food routes own their parsers so authentication and API limits run before
+registerSxbertyVoiceRoutes(app, requireAdmin);
+// Media routes own their parsers so authentication and API limits run before
 // allocating multipart buffers or decoding JSON metadata.
 app.use(express.json({ limit: "1mb" }));
 

@@ -3,7 +3,7 @@ import { getDoomPresentation } from "./sxberty-doom.js";
 
 const properties = ["--sxberty-doom-filter", "--sxberty-doom-background", "--sxberty-doom-text", "--sxberty-doom-red"];
 
-export default function SxbertyDoomScene({ pet, now, obscured = false }) {
+export default function SxbertyDoomScene({ pet, now }) {
   const scene = getDoomPresentation(pet, now);
   const screenRef = useRef(null);
   useEffect(() => {
@@ -32,10 +32,5 @@ export default function SxbertyDoomScene({ pet, now, obscured = false }) {
     screen.style.setProperty("--sxberty-doom-text", scene.text);
     screen.style.setProperty("--sxberty-doom-red", String(scene.red * 0.22));
   }, [scene.active, scene.filter, scene.background, scene.text, scene.red]);
-  if (!scene.active) return null;
-  return <aside className="sxberty-countdown" aria-label="Sxberty countdown" data-phase={scene.phase} hidden={obscured}>
-    <p className="sxberty-countdown-title" role="status">Sxberty reached 0 happiness.</p>
-    <output role="timer" aria-live="off" aria-label={`Time until Sxberty's transformation: ${scene.time}`}>{scene.time}</output>
-    <p className="sxberty-countdown-phase" aria-live="polite">{scene.phase === "too-late" ? "It's too late." : scene.phase === "reddening" ? "Something is getting closer…" : "The color is draining away…"}</p>
-  </aside>;
+  return null;
 }

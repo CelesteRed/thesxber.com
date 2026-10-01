@@ -3,7 +3,7 @@ import { getDeathFace } from './sxberty-appearance.js';
 export const SXBERTY_STORAGE_KEY = 'sxber-verity-pet-v1';
 export const VERITY_STORAGE_KEY = SXBERTY_STORAGE_KEY;
 export const UNLOCK_CLICKS = 10;
-export const COUNTDOWN_MS = 60 * 1000;
+export const COUNTDOWN_MS = 10 * 1000;
 export const SCARE_LEASE_MS = 8 * 1000;
 export const DEATH_DELAY_MS = 10 * 1000;
 export const RETURN_FALL_MS = 1200;

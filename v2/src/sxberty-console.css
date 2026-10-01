@@ -1,0 +1,48 @@
+.sxberty-console { position: fixed; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); z-index: 60; width: 316px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 28px); overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 20px; border: 2px solid #697069; border-radius: 18px 18px 58px 18px; background: linear-gradient(135deg, #e9e9d9, #cdcebd 65%, #babcad); color: #26352c; box-shadow: inset 2px 2px 0 #ffffffb3, inset -3px -3px 0 #858b8055, 0 10px 35px #07190d45; transform: translateX(calc(100% + 40px)); opacity: 0; transition: transform 320ms cubic-bezier(.2,.8,.2,1), opacity 200ms ease; }
+.sxberty-console[data-state="open"] { transform: translateX(0); opacity: 1; }
+.sxberty-console[data-state="opening"], .sxberty-console[data-state="closing"] { transform: translateX(calc(100% + 40px)); opacity: 0; pointer-events: none; }
+.sxberty-console-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.sxberty-console-brand { color: #374649; font: italic 750 11px/1.1 system-ui, sans-serif; letter-spacing: 1.2px; }
+.sxberty-console-brand strong { font-style: normal; font-size: 8px; letter-spacing: 2px; }
+.sxberty-console-close { width: 28px; height: 28px; border: 0; border-radius: 50%; background: #737e7120; color: #26352c; cursor: pointer; font-size: 21px; }
+.sxberty-console-bezel { position: relative; border-radius: 12px 12px 28px 12px; padding: 24px 14px 16px; background: #566261; border: 1px solid #3c4947; box-shadow: inset 0 2px 4px #1b2d2855; }
+.sxberty-console-screen-label { position: absolute; left: 30px; top: 9px; color: #d5ddc7; font: 600 7px/1 monospace; letter-spacing: 2.3px; }
+.sxberty-console-power { position: absolute; top: 9px; left: 14px; width: 7px; height: 7px; border-radius: 50%; background: #d55655; box-shadow: 0 0 6px #ed584580; }
+.sxberty-console-screen { border: 2px solid #374b28; border-radius: 3px; padding: 12px 10px; background: linear-gradient(150deg, #b7c897, #94ae73); color: #243b1d; box-shadow: inset 1px 2px 7px #29491d35; }
+.sxberty-console-screen :is(h2, p, small, label, strong, output) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.sxberty-console-character { display: flex; align-items: center; gap: 9px; }
+.sxberty-console-character h2 { font-size: 22px; line-height: 1.1; letter-spacing: -1px; }
+.sxberty-console-character p { font-size: 11px; margin: 4px 0 2px; }
+.sxberty-console-character small { font-size: 8px; }
+.sxberty-console-character .sxberty-sprite { filter: saturate(.75); }
+.sxberty-console-speech { margin: 9px 0 11px; min-height: 40px; padding: 7px 8px; border: 1px solid #425b2e66; border-radius: 3px; background: #cad7ac55; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.sxberty-console-stats { display: grid; gap: 7px; }
+.sxberty-console-stats label > span { display: flex; justify-content: space-between; font-size: 9px; margin-bottom: 3px; }
+.sxberty-console-stats meter { display: block; width: 100%; height: 7px; border: 0; background: #6a825055; border-radius: 0; }
+.sxberty-console-stats meter::-webkit-meter-bar { border: 0; border-radius: 0; background: #6a825055; }
+.sxberty-console-stats meter::-webkit-meter-optimum-value { background: #38582d; border-radius: 0; }
+.sxberty-console-stats meter::-moz-meter-bar { background: #38582d; border-radius: 0; }
+.sxberty-console-doom { display: block; margin-top: 8px; font-size: 18px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; color: #783125; }
+.sxberty-console-error { margin-top: 6px; font-size: 9px; color: #753428; }
+.sxberty-console-controls { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 20px; }
+.sxberty-console-dpad { display: grid; grid-template-columns: repeat(3, 33px); grid-template-rows: repeat(3, 29px); }
+.sxberty-console-dpad button { border: 0; color: #e0e6d8; background: #293531; font-size: 8px; font-weight: 650; cursor: pointer; box-shadow: 0 3px 0 #17251f; }
+.sxberty-console-dpad span { grid-area: 2 / 2; background: #293531; box-shadow: 0 3px 0 #17251f; }
+.sxberty-console-talk { grid-area: 1 / 2; border-radius: 4px 4px 0 0; }
+.sxberty-console-roam { grid-area: 2 / 1; border-radius: 4px 0 0 4px; }
+.sxberty-console-hide { grid-area: 2 / 3; border-radius: 0 4px 4px 0; }
+.sxberty-console-sleep { grid-area: 3 / 2; border-radius: 0 0 4px 4px; }
+.sxberty-console-action-buttons { display: flex; gap: 12px; transform: rotate(-16deg); margin-right: 3px; }
+.sxberty-console-action-buttons > div { display: grid; justify-items: center; gap: 6px; }
+.sxberty-console-action-buttons button { width: 43px; height: 43px; border: 2px solid #7b2746; border-radius: 50%; color: #fae2ec; background: #a63f63; box-shadow: inset 2px 2px 0 #dc80a388, 0 4px 0 #702d47, 0 6px 7px #39463430; font-size: 16px; font-weight: 800; cursor: pointer; }
+.sxberty-console-action-buttons span { font: 750 8px/1 system-ui, sans-serif; letter-spacing: 1px; }
+.sxberty-console-footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 17px; padding-right: 13px; }
+.sxberty-console-footer .sxberty-voice-button { min-height: 28px; padding: 6px 9px; border: 0; border-radius: 12px; background: #879384; box-shadow: inset 0 1px 1px #596954, 0 2px 0 #f0f2e580; color: #21372a; font-size: 9px; font-weight: 650; cursor: pointer; }
+.sxberty-console-speaker { display: flex; gap: 4px; transform: rotate(-25deg); }
+.sxberty-console-speaker i { display: block; width: 4px; height: 28px; border-radius: 4px; background: #8a9386; box-shadow: inset 1px 1px 2px #525f49; }
+.sxberty-console button:focus-visible { outline: 3px solid #347045; outline-offset: 3px; }
+.sxberty-console button:disabled { opacity: .45; cursor: not-allowed; }
+.sxberty-console button:active:not(:disabled) { translate: 0 1px; }
+@media (max-width: 600px) { .sxberty-console { right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); } }
+@media (max-height: 540px) { .sxberty-console { width: 290px; padding: 10px 12px 14px; } .sxberty-console-controls { margin-top: 13px; } .sxberty-console-speech { min-height: 30px; } }
+@media (prefers-reduced-motion: reduce) { .sxberty-console { transition: none; } }
