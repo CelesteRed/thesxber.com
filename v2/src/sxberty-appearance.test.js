@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { getFaceBlend } from "./sxberty-appearance.js";
+import { getDeathFace, getFaceBlend } from "./sxberty-appearance.js";
 import { getSxbertyPhase } from "../shared/sxberty.js";
 
 test("smile gradually flattens below 80 and expressions become more upset", () => {
@@ -24,6 +24,25 @@ test("blend weights stay finite and bounded for every happiness value", () => {
     assert.ok(["normal", "neutral", "displeased", "angry", "abandoned"].includes(blend.to));
   }
   for (const value of [undefined, null, NaN, Infinity, "0"]) assert.deepEqual(getFaceBlend(value), getFaceBlend(100));
+});
+
+test("death expressions are one worse than the pre-loss happiness phase", () => {
+  for (const [happiness, face] of [
+    [100, "neutral"], [80, "neutral"], [60, "neutral"], [59.99, "displeased"],
+    [40, "displeased"], [39.99, "angry"], [20, "angry"], [19.99, "abandoned"], [0, "abandoned"],
+  ]) assert.equal(getDeathFace(happiness), face);
+  for (const invalid of [undefined, null, NaN, Infinity, "0"]) assert.equal(getDeathFace(invalid), "neutral");
+});
+
+test("a temporary forced face bypasses blending without changing happiness", () => {
+  for (const face of ["normal", "neutral", "displeased", "angry", "abandoned"]) {
+    for (const happiness of [0, 10, 30, 50, 70, 100]) {
+      assert.deepEqual(getFaceBlend(happiness, face), { from: face, to: face, mix: 0 });
+    }
+  }
+  for (const invalid of [null, undefined, "", "missing", "toString", {}, []]) {
+    assert.deepEqual(getFaceBlend(70, invalid), getFaceBlend(70));
+  }
 });
 
 test("phrase phases match happiness boundary transitions", () => {

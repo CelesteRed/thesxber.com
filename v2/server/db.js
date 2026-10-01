@@ -98,6 +98,20 @@ export async function initializeDatabase() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS sxberty_foods (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        fullness INTEGER NOT NULL CHECK (fullness BETWEEN 0 AND 100),
+        happiness INTEGER NOT NULL CHECK (happiness BETWEEN 0 AND 100),
+        energy INTEGER NOT NULL CHECK (energy BETWEEN 0 AND 100),
+        image_data BYTEA NOT NULL CHECK (octet_length(image_data) BETWEEN 1 AND 3145728),
+        width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 512),
+        height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 512),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS floating_emojis (
         id UUID PRIMARY KEY,
         name TEXT NOT NULL,

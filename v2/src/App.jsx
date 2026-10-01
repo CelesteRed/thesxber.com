@@ -13,6 +13,8 @@ import SxbertyPet, { useSxbertyPet } from "./SxbertyPet";
 import SxbertyAdminSection from "./SxbertyAdminSection";
 import { updateSxbertyDraft } from "./sxberty-drafts.js";
 import { validateSxbertyPatch } from "../shared/sxberty.js";
+import { validateSxbertyFoodPatch } from "../shared/sxberty-foods.js";
+import { sxbertyFoodDraftKey, updateSxbertyFoodDraft } from "./sxberty-food-drafts.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const EMAIL = "thesxberbusiness@gmail.com";
@@ -163,7 +165,7 @@ function FanartAdminRow({ entry, draft = {}, onChange, onRemove, busy, error }) 
 
 function Site() {
   const [emailOpen, setEmailOpen] = useState(false);
-  const sxberty = useSxbertyPet();
+  const sxberty = useSxbertyPet({ blocked: emailOpen });
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -213,6 +215,14 @@ function AdminPage() {
   const [sxbertyLoading, setSxbertyLoading] = useState(false);
   const [sxbertyLoadError, setSxbertyLoadError] = useState("");
   const sxbertyLoadVersion = useRef(0);
+  const [sxbertyFoods, setSxbertyFoods] = useState(null);
+  const [foodLoading, setFoodLoading] = useState(false);
+  const [foodLoadError, setFoodLoadError] = useState("");
+  const [foodBusy, setFoodBusy] = useState(false);
+  const [foodActionError, setFoodActionError] = useState("");
+  const [foodMessage, setFoodMessage] = useState("");
+  const foodLoadVersion = useRef(0);
+  const foodMutationActive = useRef(false);
   const [syncingVideos, setSyncingVideos] = useState(false);
   const [videoMessage, setVideoMessage] = useState("");
   const [activity, setActivity] = useState([]);
@@ -298,8 +308,59 @@ function AdminPage() {
     setSaveErrors(current => { const next = { ...current }; delete next.sxberty; return next; });
   };
 
+  const changeFood = (entry, changes) => {
+    const key = sxbertyFoodDraftKey(entry.id);
+    setDrafts(current => {
+      const next = { ...current }, draft = updateSxbertyFoodDraft(entry, current[key], changes);
+      if (Object.keys(draft).length) next[key] = draft; else delete next[key];
+      return next;
+    });
+    setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+  };
+  const invalidateFoodLoad = () => {
+    foodLoadVersion.current++;
+    setFoodLoading(false);
+  };
+  const mutateFood = async (method, entry, formData) => {
+    if (savingAll || foodMutationActive.current) return false;
+    foodMutationActive.current = true;
+    setFoodBusy(true);
+    setFoodActionError("");
+    setFoodMessage(method === "POST" ? "Uploading food…" : "Removing food…");
+    invalidateFoodLoad();
+    try {
+      const endpoint = `/api/admin/sxberty-foods${entry ? `/${encodeURIComponent(entry.id)}` : ""}`;
+      const response = await fetch(apiUrl(endpoint), { method, credentials: "include", ...(formData ? { body: formData } : {}) });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again.");
+      if (!response.ok) throw new Error(data.error || "Unable to update Sxberty foods.");
+      if (method === "POST" && !data.item) throw new Error("The uploaded food was not returned. Retry loading foods.");
+      invalidateFoodLoad();
+      setFoodLoadError("");
+      if (method === "POST") {
+        setSxbertyFoods(current => [...(current || []).filter(item => item.id !== data.item.id), data.item]);
+        setFoodMessage(`Uploaded ${data.item.name}. Food is ${data.item.enabled ? "enabled" : "disabled"}.`);
+      } else {
+        setSxbertyFoods(current => (current || []).filter(item => item.id !== entry.id));
+        const key = sxbertyFoodDraftKey(entry.id);
+        setDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+        setSaveErrors(current => { const next = { ...current }; delete next[key]; return next; });
+        setFoodMessage(`Removed ${entry.name}.`);
+      }
+      loadActivity().catch(() => {});
+      return true;
+    } catch (error) {
+      setFoodMessage("");
+      setFoodActionError(error.message);
+      return false;
+    } finally {
+      foodMutationActive.current = false;
+      setFoodBusy(false);
+    }
+  };
+
   const saveAll = async () => {
-    if (savingAll || !dirtyCount) return;
+    if (savingAll || foodMutationActive.current || !dirtyCount) return;
     setSavingAll(true);
     setSaveErrors({});
     const failures = {};
@@ -309,17 +370,24 @@ function AdminPage() {
         const emoji = filename.startsWith("emoji:");
         const live = filename === "live";
         const sxberty = filename === "sxberty";
+        const food = filename.startsWith("sxberty-food:");
         const video = filename.startsWith("video:");
         const settings = filename === "emoji-settings";
-        const endpoint = sxberty ? "/api/admin/sxberty" : live ? "/api/admin/live" : settings ? "/api/admin/emoji-settings" : video ? `/api/admin/videos/${encodeURIComponent(filename.slice(6))}` : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
-        const body = sxberty ? validateSxbertyPatch(draft) : draft;
+        const endpoint = food ? `/api/admin/sxberty-foods/${encodeURIComponent(filename.slice(13))}` : sxberty ? "/api/admin/sxberty" : live ? "/api/admin/live" : settings ? "/api/admin/emoji-settings" : video ? `/api/admin/videos/${encodeURIComponent(filename.slice(6))}` : emoji ? `/api/admin/emojis/${filename.slice(6)}` : `/api/admin/fanart/${encodeURIComponent(filename)}`;
+        const body = food ? validateSxbertyFoodPatch(draft) : sxberty ? validateSxbertyPatch(draft) : draft;
+        if (food) invalidateFoodLoad();
         const response = await fetch(apiUrl(endpoint), {
           method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) throw new Error("Your Discord login has expired. Sign in again to save these drafts.");
         if (!response.ok) throw new Error(data.error || "Unable to save this item. Try again.");
-        if (sxberty) {
+        if (food) {
+          if (!data.item) throw new Error("The saved food was not returned. Retry Save all.");
+          invalidateFoodLoad();
+          setFoodLoadError("");
+          setSxbertyFoods(current => (current || []).map(entry => entry.id === filename.slice(13) ? data.item : entry));
+        } else if (sxberty) {
           if (!data.settings) throw new Error("The saved Sxberty settings were not returned. Retry Save all.");
           sxbertyLoadVersion.current++;
           setSxbertyLoading(false);
@@ -380,6 +448,23 @@ function AdminPage() {
     }
   }, []);
 
+  const loadSxbertyFoods = useCallback(async () => {
+    const version = ++foodLoadVersion.current;
+    setFoodLoading(true);
+    setFoodLoadError("");
+    try {
+      const response = await fetch(apiUrl("/api/admin/sxberty-foods"), { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(response.status === 401 ? "Your Discord login has expired. Sign in again." : data.error || "Unable to load Sxberty foods.");
+      if (!Array.isArray(data.items)) throw new Error("The food catalog is unavailable. Please retry.");
+      if (version === foodLoadVersion.current) setSxbertyFoods(data.items);
+    } catch (error) {
+      if (version === foodLoadVersion.current) setFoodLoadError(error.message);
+    } finally {
+      if (version === foodLoadVersion.current) setFoodLoading(false);
+    }
+  }, []);
+
   const loadEmojis = useCallback(async () => {
     const response = await fetch(apiUrl("/api/admin/emojis"), { credentials: "include" });
     const data = await response.json();
@@ -418,8 +503,8 @@ function AdminPage() {
     }
   };
   const loadDashboard = useCallback(async () => {
-    await Promise.all([loadEntries(), loadActivity(), loadEmojis(), loadVideos(), loadLive(), loadSxberty()]);
-  }, [loadActivity, loadEntries, loadEmojis, loadLive, loadVideos, loadSxberty]);
+    await Promise.all([loadEntries(), loadActivity(), loadEmojis(), loadVideos(), loadLive(), loadSxberty(), loadSxbertyFoods()]);
+  }, [loadActivity, loadEntries, loadEmojis, loadLive, loadVideos, loadSxberty, loadSxbertyFoods]);
 
   useEffect(() => {
     let active = true;
@@ -473,6 +558,12 @@ function AdminPage() {
       setSxbertySettings(null);
       setSxbertyLoading(false);
       setSxbertyLoadError("");
+      foodLoadVersion.current++;
+      setSxbertyFoods(null);
+      setFoodLoading(false);
+      setFoodLoadError("");
+      setFoodActionError("");
+      setFoodMessage("");
       setVideoMessage("");
       setDrafts({});
       setSaveErrors({});
@@ -548,7 +639,7 @@ function AdminPage() {
       <section className="admin-card admin-dashboard">
         <div className="admin-toolbar">
           <a className="admin-back" href="/">← Back to thesxber.com</a>
-          <button className="admin-logout" type="button" onClick={logout} disabled={savingAll}>Sign out</button>
+          <button className="admin-logout" type="button" onClick={logout} disabled={savingAll || foodBusy}>Sign out</button>
         </div>
         <div className="admin-user">
           {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <i className="fa-brands fa-discord" aria-hidden="true" />}
@@ -563,8 +654,13 @@ function AdminPage() {
           message={videoMessage} onSync={syncVideos} onRefresh={refreshVideoStatus} onChange={changeVideo} />
         <LiveAdminSection data={liveData} draft={drafts.live} error={saveErrors.live} busy={savingAll} onChange={changeLive} />
         <SxbertyAdminSection settings={sxbertySettings} draft={drafts.sxberty} error={saveErrors.sxberty}
-          loading={sxbertyLoading} loadError={sxbertyLoadError} busy={savingAll}
-          onChange={changeSxberty} onRetry={loadSxberty} />
+          loading={sxbertyLoading} loadError={sxbertyLoadError} busy={savingAll || foodBusy}
+          onChange={changeSxberty} onRetry={loadSxberty}
+          foods={{ items: sxbertyFoods || [], drafts, errors: saveErrors, loading: foodLoading,
+            loadError: foodLoadError, actionError: foodActionError, message: foodMessage,
+            ready: sxbertyFoods !== null, apiBase: API_BASE, onRetry: loadSxbertyFoods,
+            onChange: changeFood, onUpload: formData => mutateFood("POST", null, formData),
+            onRemove: entry => mutateFood("DELETE", entry) }} />
         <AdminSection title="Upload fanart">
         <form className="admin-form" onSubmit={upload}>
           <fieldset className="admin-upload-fields" disabled={savingAll}>
@@ -618,7 +714,7 @@ function AdminPage() {
         <span aria-live="polite">{savingAll ? "Saving changes…" : `${dirtyCount} ${dirtyCount === 1 ? "item" : "items"} changed`}</span>
         {Object.keys(saveErrors).length > 0 && <small role="alert">Some changes could not save. Check the marked entries and retry.</small>}
         {Object.values(saveErrors).some(error => error.includes("login has expired")) && <a href={apiUrl("/api/auth/discord")} target="_blank" rel="noreferrer">Sign in again in a new tab, then retry</a>}
-        <button type="button" onClick={saveAll} disabled={savingAll}>{savingAll ? "Saving…" : "Save all"}</button>
+        <button type="button" onClick={saveAll} disabled={savingAll || foodBusy}>{savingAll ? "Saving…" : "Save all"}</button>
       </div>}
     </main>
   );

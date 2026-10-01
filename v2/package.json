@@ -15,8 +15,9 @@
     "bot": "node server/discord-bot.js",
     "test:emojis": "node --test server/emojis.test.js",
     "test:live": "node --test server/live.test.js",
-    "test:pet": "node --test src/verity-pet.test.js src/sxberty-appearance.test.js src/sxberty-storage.test.js src/sxberty-motion.test.js src/sxberty-doom.test.js",
-    "test:sxberty": "node --test server/sxberty.test.js src/sxberty-drafts.test.js"
+    "test:pet": "node --test src/verity-pet.test.js src/sxberty-appearance.test.js src/sxberty-storage.test.js src/sxberty-motion.test.js src/sxberty-doom.test.js src/sxberty-physics.test.js",
+    "test:sxberty": "node --test server/sxberty.test.js src/sxberty-drafts.test.js",
+    "test:foods": "node --test server/sxberty-foods.test.js src/sxberty-food-drafts.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

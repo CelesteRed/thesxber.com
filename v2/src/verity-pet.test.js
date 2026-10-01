@@ -7,6 +7,12 @@ import {
   COUNTDOWN_MS,
   SCARE_LEASE_MS,
   FORMATION_MS,
+  DEATH_DELAY_MS,
+  RETURN_FALL_MS,
+  getPetLifeToken,
+  getPetPresence,
+  applyPetEvent,
+  takeDeathComment,
   createPet,
   normalizePet,
   advancePet,
@@ -51,9 +57,11 @@ test('new pets have the versioned defaults and requested unlock threshold', () =
   assert.equal(UNLOCK_CLICKS, 10);
   assert.equal(COUNTDOWN_MS, MINUTE);
   assert.equal(SCARE_LEASE_MS, 8000);
-  assert.equal(FORMATION_MS, 2000);
+  assert.equal(DEATH_DELAY_MS, 10000);
+  assert.equal(RETURN_FALL_MS, 1200);
+  assert.equal(FORMATION_MS, RETURN_FALL_MS);
   assert.deepEqual(createPet(START), {
-    version: 3,
+    version: 4,
     generation: 1,
     stage: 'alive',
     stageStartedAt: START,
@@ -66,6 +74,8 @@ test('new pets have the versioned defaults and requested unlock threshold', () =
     sleeping: false,
     hidden: false,
     paused: false,
+    lastDeath: null,
+    recentEventIds: [],
   });
   const before = Date.now();
   const pet = createPet();
@@ -73,7 +83,7 @@ test('new pets have the versioned defaults and requested unlock threshold', () =
 });
 
 test('normalization rejects unrecognized data and strips extra properties', () => {
-  for (const value of [null, undefined, false, 1, 'pet', [], {}, { version: 4 }, { version: '1' }, { version: '2' }, { version: '3' }]) {
+  for (const value of [null, undefined, false, 1, 'pet', [], {}, { version: 5 }, { version: '1' }, { version: '2' }, { version: '3' }, { version: '4' }]) {
     assert.equal(normalizePet(value, START), null);
     assert.equal(advancePet(value, START), null);
     assert.equal(careForPet(value, 'feed', START), null);
@@ -83,6 +93,7 @@ test('normalization rejects unrecognized data and strips extra properties', () =
   assert.deepEqual(normalizePet({ version: 1 }, START), createPet(START));
   assert.deepEqual(normalizePet({ version: 2 }, START), createPet(START));
   assert.deepEqual(normalizePet({ version: 3 }, START), createPet(START));
+  assert.deepEqual(normalizePet({ version: 4 }, START), createPet(START));
   assert.deepEqual(normalizePet({ ...createPet(START), extra: 'ignored', scarePending: true, zeroLatched: true }, START), createPet(START));
 });
 
@@ -213,7 +224,7 @@ test('sleep recovers energy while hunger and happiness still decay', () => {
 
 test('successful care applies bounded effects and adds one bond', () => {
   const pet = Object.freeze({ ...createPet(START), happiness: 80 });
-  assert.deepEqual(stats(careForPet(pet, 'feed', START)), [100, 80, 90, 1]);
+  assert.deepEqual(stats(careForPet(pet, 'feed', START)), [80, 80, 90, 0]);
   assert.deepEqual(stats(careForPet(pet, 'play', START)), [74, 98, 78, 1]);
   assert.deepEqual(stats(careForPet(pet, 'pet', START)), [80, 88, 90, 1]);
   const depleted = { ...pet, fullness: 3, happiness: 99, energy: 12 };
@@ -245,7 +256,7 @@ test('care advances elapsed time before evaluating action eligibility', () => {
   const later = careForPet(pet, 'play', START + HOUR);
   assert.deepEqual(stats(later), [76, 40, 11, 0]);
   const full = { ...createPet(START), fullness: 100 };
-  assert.deepEqual(stats(careForPet(full, 'feed', START + HOUR)), [100, 40, 85, 1]);
+  assert.deepEqual(stats(careForPet(full, 'feed', START + HOUR)), [96, 40, 85, 0]);
 });
 
 test('hide/show preserve stats and hiding does not pause simulation', () => {
@@ -297,12 +308,12 @@ test('persistence round-trips the complete schema and loads offline simulation',
 });
 
 test('corrupt storage is rejected or sanitized without throwing', () => {
-  for (const raw of ['', '{broken', 'null', '[]', 'true', '42', '{}', '{"version":4}', '{"version":"1"}']) {
+  for (const raw of ['', '{broken', 'null', '[]', 'true', '42', '{}', '{"version":5}', '{"version":"1"}']) {
     assert.equal(loadPet(memoryStorage(raw), START), null);
   }
   const storage = memoryStorage(JSON.stringify({ version: 1, fullness: -40, happiness: 1000, energy: 'bad', bond: -9 }));
   assert.deepEqual(stats(loadPet(storage, START)), [0, 100, 90, 0]);
-  for (const invalid of [null, {}, { version: 4 }]) {
+  for (const invalid of [null, {}, { version: 5 }]) {
     assert.equal(savePet(storage, invalid), false);
   }
 });
@@ -336,7 +347,7 @@ test('healthy version 1 and 2 migration preserves progress and preferences', () 
       hidden: true,
       paused: true,
     });
-    const expected = { ...legacy, version: 3, generation: 1, stage: 'alive', stageStartedAt: legacy.adoptedAt };
+    const expected = { ...legacy, version: 4, generation: 1, stage: 'alive', stageStartedAt: legacy.adoptedAt, lastDeath: null, recentEventIds: [] };
     assert.deepEqual(normalizePet(legacy, START), expected);
     const storage = memoryStorage(JSON.stringify(legacy));
     assert.deepEqual(loadPet(storage, START), expected);
@@ -358,7 +369,7 @@ test('legacy zero and pending scares receive a new full countdown on migration',
       };
       const storage = memoryStorage(JSON.stringify(legacy));
       const loaded = loadPet(storage, START);
-      assert.equal(loaded.version, 3);
+      assert.equal(loaded.version, 4);
       assert.equal(loaded.generation, 1);
       assert.equal(loaded.adoptedAt, START - HOUR);
       assert.equal(loaded.bond, 22);
@@ -391,7 +402,7 @@ test('malformed lifecycle values are repaired without introducing an instant sca
     assert.equal(zero.stageStartedAt, START);
     assert.equal(claimPetScare(zero, START).scare, false);
   }
-  for (const stage of ['countdown', 'scaring', 'forming']) {
+  for (const stage of ['countdown', 'scaring', 'recovering', 'forming']) {
     for (const stageStartedAt of [undefined, null, 'yesterday', NaN, Infinity, START + HOUR]) {
       const repaired = normalizePet({ ...createPet(START), stage, stageStartedAt }, START);
       assert.equal(repaired.stage, stage);
@@ -482,7 +493,7 @@ test('reload preserves remaining countdown and overdue offline catch-up only arm
   assert.deepEqual(direct, claimed);
 });
 
-test('only the matching scare token can replace the old pet with a fresh generation', () => {
+test('only the matching scare token enters recovery before a fresh generation', () => {
   assert.equal(getScareToken(null), null);
   assert.equal(getScareToken(undefined), null);
   assert.equal(getScareToken(createPet(START)), null);
@@ -496,10 +507,19 @@ test('only the matching scare token can replace the old pet with a fresh generat
   for (const invalid of [null, undefined, '', '7:wrong:token', {}, token.replace('7:', '6:')]) {
     assert.deepEqual(finishPetScare(claimed, invalid, claimedAt + 500), claimed);
   }
-  const now = claimedAt + 1500;
-  const fresh = finishPetScare(Object.freeze(claimed), token, now);
+  const finishedAt = claimedAt + 1500;
+  const recovering = finishPetScare(Object.freeze(claimed), token, finishedAt);
+  assert.equal(recovering.stage, 'recovering');
+  assert.equal(recovering.generation, 7);
+  assert.deepEqual(stats(recovering), [4, 0, 5, 99]);
+  assert.equal(recovering.lastDeath.reason, 'monster');
+  assert.equal(recovering.lastDeath.returnAt, claimedAt + DEATH_DELAY_MS);
+  assert.deepEqual(finishPetScare(recovering, token, finishedAt + 500), recovering);
+  assert.equal(advancePet(recovering, claimedAt + DEATH_DELAY_MS - 1).stage, 'recovering');
+  const now = claimedAt + DEATH_DELAY_MS;
+  const fresh = advancePet(recovering, now);
   assert.deepEqual(fresh, {
-    ...createPet(now), generation: 8, stage: 'forming', paused: true,
+    ...createPet(now), generation: 8, stage: 'forming', paused: true, lastDeath: claimed.lastDeath,
   });
   assert.equal(getScareToken(fresh), null);
   assert.deepEqual(finishPetScare(fresh, token, now + 5000), fresh);
@@ -521,7 +541,10 @@ test('a closed scare owner recovers after its lease without a duplicate scare or
   assert.equal(loadPet(storage, claimedAt + SCARE_LEASE_MS - 1).stage, 'scaring');
   const now = claimedAt + SCARE_LEASE_MS;
   const recovered = loadPet(storage, now);
-  assert.deepEqual(recovered, { ...createPet(now), generation: 2, stage: 'forming', paused: true });
+  assert.deepEqual(recovered, { ...claimed, stage: 'recovering', updatedAt: now });
+  const returnedAt = claimedAt + DEATH_DELAY_MS;
+  const fresh = advancePet(recovered, returnedAt);
+  assert.deepEqual(fresh, { ...createPet(returnedAt), generation: 2, stage: 'forming', paused: true, lastDeath: claimed.lastDeath });
   assert.deepEqual(finishPetScare(recovered, token, now), recovered);
   assert.deepEqual(claimPetScare(claimed, now), { pet: recovered, scare: false });
   const longOffline = claimPetScare(claimed, now + 1000 * HOUR);
@@ -532,9 +555,9 @@ test('a closed scare owner recovers after its lease without a duplicate scare or
   assert.deepEqual(stats(longOffline.pet), [80, 100, 90, 0]);
 });
 
-test('formation suspends needs for exactly two seconds, including after reload', () => {
+test('formation suspends needs for exactly 1.2 seconds, including after reload', () => {
   const claimed = claimPetScare(createPet(START), START + 101 * MINUTE).pet;
-  const now = claimed.updatedAt + 1000;
+  const now = claimed.updatedAt + DEATH_DELAY_MS;
   const fresh = finishPetScare(claimed, getScareToken(claimed), now);
   const storage = memoryStorage(JSON.stringify(fresh));
   const before = loadPet(storage, now + FORMATION_MS - 1);
@@ -558,8 +581,9 @@ test('formation suspends needs for exactly two seconds, including after reload',
 test('care is blocked outside alive but visibility and roaming preferences remain usable', () => {
   const countdown = advancePet({ ...createPet(START), happiness: 0 }, START);
   const scaring = claimPetScare(countdown, START + COUNTDOWN_MS).pet;
-  const forming = finishPetScare(scaring, getScareToken(scaring), scaring.updatedAt + 1000);
-  for (const pet of [countdown, scaring, forming]) {
+  const recovering = finishPetScare(scaring, getScareToken(scaring), scaring.updatedAt + 1000);
+  const forming = advancePet(recovering, scaring.lastDeath.returnAt);
+  for (const pet of [countdown, scaring, recovering, forming]) {
     for (const action of ['feed', 'play', 'pet', 'sleep']) {
       assert.deepEqual(careForPet(pet, action, pet.updatedAt), pet);
     }
@@ -574,7 +598,8 @@ test('care is blocked outside alive but visibility and roaming preferences remai
   const paused = careForPet(careForPet(countdown, 'pause', START), 'hide', START);
   assert.equal(claimPetScare(paused, START + COUNTDOWN_MS).scare, true);
   const aliveAt = forming.stageStartedAt + FORMATION_MS;
-  assert.equal(careForPet(forming, 'feed', aliveAt).bond, 1);
+  assert.equal(careForPet(forming, 'feed', aliveAt).bond, 0);
+  assert.equal(careForPet(forming, 'sleep', aliveAt).sleeping, true);
 });
 
 test('timestamp zero is a real countdown, scare and formation boundary', () => {
@@ -585,10 +610,14 @@ test('timestamp zero is a real countdown, scare and formation boundary', () => {
   const scaring = { ...countdown, stage: 'scaring' };
   assert.equal(getScareToken(scaring), '1:0:0');
   assert.equal(advancePet(scaring, SCARE_LEASE_MS - 1).stage, 'scaring');
-  const fresh = finishPetScare(scaring, '1:0:0', 0);
-  assert.equal(fresh.stageStartedAt, 0);
-  assert.equal(advancePet(fresh, FORMATION_MS - 1).stage, 'forming');
-  assert.equal(advancePet(fresh, FORMATION_MS).stage, 'alive');
+  const recovering = finishPetScare(scaring, '1:0:0', 0);
+  assert.equal(recovering.stage, 'recovering');
+  assert.equal(recovering.stageStartedAt, 0);
+  assert.equal(recovering.lastDeath.at, 0);
+  const fresh = advancePet(recovering, DEATH_DELAY_MS);
+  assert.equal(fresh.stageStartedAt, DEATH_DELAY_MS);
+  assert.equal(advancePet(fresh, DEATH_DELAY_MS + FORMATION_MS - 1).stage, 'forming');
+  assert.equal(advancePet(fresh, DEATH_DELAY_MS + FORMATION_MS).stage, 'alive');
 });
 
 test('backward and future clocks cannot produce negative needs or repeated scares', () => {
@@ -604,10 +633,270 @@ test('backward and future clocks cannot produce negative needs or repeated scare
   assert.equal(recovered.pet.stage, 'forming');
   assert.equal(recovered.pet.generation, 2);
   assert.deepEqual(finishPetScare(recovered.pet, token, START), recovered.pet);
-  assert.equal(finishPetScare(claimed, token, START - HOUR).generation, 2);
+  assert.equal(finishPetScare(claimed, token, START - HOUR).generation, 1);
+  assert.equal(finishPetScare(claimed, token, START - HOUR).stage, 'recovering');
   const countdown = { ...createPet(START), stage: 'countdown', happiness: 0, stageStartedAt: START + HOUR };
   const repaired = claimPetScare(countdown, START);
   assert.equal(repaired.scare, false);
   assert.equal(repaired.pet.stageStartedAt, START);
   assert.equal(claimPetScare(repaired.pet, START + COUNTDOWN_MS).scare, true);
+});
+
+function physicalEvent(pet, type, id = 'gesture-1', extra = {}) {
+  return { id, type, token: getPetLifeToken(pet), ...extra };
+}
+
+test('throws cost one, offscreen costs five total, and lava halves current fractional happiness', () => {
+  const pet = Object.freeze({ ...createPet(START), happiness: 83.5, bond: 10 });
+  for (const [type, happiness] of [['throw', 82.5], ['offscreen', 78.5], ['lava', 41.75]]) {
+    const result = applyPetEvent(pet, physicalEvent(pet, type), START);
+    assert.equal(result.accepted, true);
+    assert.deepEqual(stats(result.pet), [80, happiness, 90, 10]);
+    assert.equal(result.pet.generation, pet.generation);
+    assert.equal(result.pet.adoptedAt, pet.adoptedAt);
+    assert.deepEqual(result.pet.recentEventIds, ['gesture-1']);
+    if (type === 'throw') {
+      assert.equal(result.pet.lastDeath, null);
+      assert.equal(getPetLifeToken(result.pet), getPetLifeToken(pet));
+    } else {
+      assert.deepEqual(result.pet.lastDeath, {
+        id: 'gesture-1', reason: type, at: START, returnAt: START + DEATH_DELAY_MS,
+        face: 'neutral', announced: false,
+      });
+      assert.notEqual(getPetLifeToken(result.pet), getPetLifeToken(pet));
+    }
+  }
+  assert.equal(pet.happiness, 83.5);
+  const later = applyPetEvent(pet, physicalEvent(pet, 'lava'), START + MINUTE).pet;
+  assert.equal(later.happiness, 41.25);
+  const fractional = { ...pet, happiness: 0.125 };
+  assert.equal(applyPetEvent(fractional, physicalEvent(fractional, 'lava'), START).pet.happiness, 0.0625);
+});
+
+test('physical deaths disappear for ten seconds then fall for exactly 1.2 seconds without resetting stats', () => {
+  for (const type of ['offscreen', 'lava']) {
+    const original = { ...createPet(START), happiness: 60, hidden: true, sleeping: true, paused: true, bond: 9 };
+    const dead = applyPetEvent(original, physicalEvent(original, type), START).pet;
+    const returnAt = START + DEATH_DELAY_MS;
+    assert.equal(dead.stage, 'alive');
+    assert.equal(dead.sleeping, false);
+    assert.equal(dead.hidden, false);
+    assert.equal(dead.paused, true);
+    assert.equal(dead.lastDeath.face, 'neutral', 'face uses pre-loss happiness');
+    assert.deepEqual(getPetPresence(dead, START), {
+      state: 'absent', progress: 0, reason: type, face: null, token: 'gesture-1', remainingMs: DEATH_DELAY_MS,
+    });
+    assert.equal(getPetPresence(dead, returnAt - 1).remainingMs, 1);
+    assert.deepEqual(getPetPresence(dead, returnAt), {
+      state: 'falling', progress: 0, reason: type, face: 'neutral', token: 'gesture-1', remainingMs: RETURN_FALL_MS,
+    });
+    assert.equal(getPetPresence(dead, returnAt + 600).progress, 0.5);
+    assert.equal(getPetPresence(dead, returnAt + RETURN_FALL_MS - 1).state, 'falling');
+    assert.deepEqual(getPetPresence(dead, returnAt + RETURN_FALL_MS), {
+      state: 'present', progress: 1, reason: null, face: null, token: null, remainingMs: 0,
+    });
+    const returned = advancePet(dead, returnAt + RETURN_FALL_MS);
+    assert.equal(returned.generation, original.generation);
+    assert.equal(returned.adoptedAt, original.adoptedAt);
+    assert.equal(returned.bond, original.bond);
+    assert.ok(Math.abs(returned.happiness - (dead.happiness - (DEATH_DELAY_MS + RETURN_FALL_MS) / MINUTE)) < 1e-9);
+    assert.notEqual(returned.happiness, 100);
+  }
+});
+
+test('deaths reaching zero arm immediately and absence never restarts or cancels doom', () => {
+  for (const [type, happiness] of [['offscreen', 5], ['throw', 1]]) {
+    const pet = { ...createPet(START), happiness };
+    const dead = applyPetEvent(pet, physicalEvent(pet, type), START).pet;
+    assert.equal(dead.happiness, 0);
+    assert.equal(dead.stage, 'countdown');
+    assert.equal(dead.stageStartedAt, START);
+    for (const offset of [1000, DEATH_DELAY_MS, DEATH_DELAY_MS + RETURN_FALL_MS, COUNTDOWN_MS - 1]) {
+      const next = advancePet(dead, START + offset);
+      assert.equal(next.stageStartedAt, START);
+      assert.equal(next.happiness, 0);
+      assert.equal(claimPetScare(next, START + offset).scare, false);
+    }
+    assert.equal(claimPetScare(dead, START + COUNTDOWN_MS).scare, true);
+    for (const eventType of ['throw', 'offscreen', 'lava', 'food']) {
+      const result = applyPetEvent(dead, physicalEvent(dead, eventType, 'late', {
+        stats: { fullness: 100, happiness: 100, energy: 100 },
+      }), START + DEATH_DELAY_MS + RETURN_FALL_MS);
+      assert.equal(result.accepted, false);
+      assert.equal(result.pet.stageStartedAt, START);
+      assert.equal(result.pet.happiness, 0);
+    }
+  }
+  const almostZero = { ...createPet(START), happiness: 5.05 };
+  const waiting = applyPetEvent(almostZero, physicalEvent(almostZero, 'offscreen'), START).pet;
+  const zero = advancePet(waiting, START + DEATH_DELAY_MS);
+  assert.equal(zero.stage, 'countdown');
+  assert.ok(Math.abs(zero.stageStartedAt - (START + 3000)) < 0.001);
+});
+
+test('only present alive pets accept physical events and blocked care cannot bypass absence', () => {
+  const pet = { ...createPet(START), happiness: 80 };
+  const dead = applyPetEvent(pet, physicalEvent(pet, 'offscreen'), START).pet;
+  for (const offset of [0, DEATH_DELAY_MS - 1, DEATH_DELAY_MS, DEATH_DELAY_MS + RETURN_FALL_MS - 1]) {
+    const now = START + offset;
+    const expected = advancePet(dead, now);
+    for (const type of ['throw', 'offscreen', 'lava', 'food']) {
+      const event = physicalEvent(dead, type, 'blocked', { stats: { fullness: 10, happiness: 10, energy: 10 } });
+      assert.deepEqual(applyPetEvent(dead, event, now), { pet: expected, accepted: false });
+    }
+    for (const action of ['feed', 'play', 'pet', 'sleep']) assert.deepEqual(careForPet(dead, action, now), expected);
+    assert.equal(careForPet(dead, 'hide', now).hidden, true);
+    assert.equal(careForPet({ ...dead, hidden: true }, 'show', now).hidden, false);
+    assert.equal(careForPet(dead, 'pause', now).paused, true);
+  }
+  const now = START + DEATH_DELAY_MS + RETURN_FALL_MS;
+  assert.equal(applyPetEvent(dead, physicalEvent(dead, 'throw', 'returned'), now).accepted, true);
+  assert.equal(careForPet(dead, 'sleep', now).sleeping, true);
+});
+
+test('food is the only feeding path and uses validated bounded catalog boosts', () => {
+  const pet = Object.freeze({ ...createPet(START), fullness: 91, happiness: 70.5, energy: 5 });
+  assert.deepEqual(careForPet(pet, 'feed', START), pet);
+  const event = physicalEvent(pet, 'food', 'food-1', { stats: { fullness: 25, happiness: 10, energy: 100 } });
+  const result = applyPetEvent(pet, event, START);
+  assert.equal(result.accepted, true);
+  assert.deepEqual(stats(result.pet), [100, 80.5, 100, 1]);
+  assert.equal(result.pet.lastDeath, null);
+  assert.equal(getPetLifeToken(result.pet), getPetLifeToken(pet));
+  const zero = physicalEvent(pet, 'food', 'food-zero', { stats: { fullness: 0, happiness: 0, energy: 0 } });
+  assert.deepEqual(stats(applyPetEvent(pet, zero, START).pet), [91, 70.5, 5, 1]);
+  for (const bad of [undefined, null, [], {}, { fullness: 1, happiness: 2 },
+    { fullness: 1, happiness: 2, energy: 3, bond: 5 },
+    ...[-1, 101, 0.5, NaN, Infinity, '3', null].map(fullness => ({ fullness, happiness: 2, energy: 3 }))]) {
+    assert.deepEqual(applyPetEvent(pet, { ...event, stats: bad }, START), { pet, accepted: false });
+  }
+  const maxBond = { ...pet, bond: Number.MAX_SAFE_INTEGER };
+  assert.equal(applyPetEvent(maxBond, event, START).pet.bond, Number.MAX_SAFE_INTEGER);
+});
+
+test('event validation, bounded deduplication and life identities reject stale callbacks', () => {
+  let pet = createPet(START);
+  const token = getPetLifeToken(pet);
+  assert.equal(token, `1:${START}:initial`);
+  assert.equal(getPetLifeToken(null), null);
+  for (const event of [null, [], {}, { id: 'x', token, type: 'feed' },
+    ...['', ' ', 'x'.repeat(101), 1, null].map(id => ({ id, token, type: 'throw' })),
+    { id: 'x', token: 'stale', type: 'throw' }]) {
+    assert.deepEqual(applyPetEvent(pet, event, START), { pet, accepted: false });
+  }
+  assert.deepEqual(applyPetEvent(null, { id: 'x', token, type: 'throw' }, START), { pet: null, accepted: false });
+  for (let i = 0; i < 40; i++) {
+    const event = { id: `drag-${i}`, token, type: 'throw' };
+    const result = applyPetEvent(pet, event, START);
+    assert.equal(result.accepted, true);
+    pet = result.pet;
+    assert.equal(applyPetEvent(pet, event, START).accepted, false);
+  }
+  assert.equal(pet.happiness, 60);
+  assert.equal(pet.recentEventIds.length, 32);
+  assert.equal(pet.recentEventIds[0], 'drag-8');
+  const event = { id: 'death-1', token, type: 'lava' };
+  const dead = applyPetEvent(pet, event, START).pet;
+  const now = START + DEATH_DELAY_MS + RETURN_FALL_MS;
+  assert.equal(applyPetEvent(dead, { id: 'old-gesture', token, type: 'offscreen' }, now).accepted, false);
+  assert.equal(applyPetEvent(dead, physicalEvent(dead, 'lava', 'death-1'), now).accepted, false);
+  assert.equal(getPetLifeToken(dead), `1:${START}:death-1`);
+});
+
+test('death comments are consumed once at return, persist the reason, and never mutate their input', () => {
+  for (const type of ['lava', 'offscreen']) {
+    const original = createPet(START);
+    const dead = applyPetEvent(original, physicalEvent(original, type), START).pet;
+    assert.equal(takeDeathComment(dead, START + DEATH_DELAY_MS - 1).reason, null);
+    const result = takeDeathComment(Object.freeze(dead), START + DEATH_DELAY_MS);
+    assert.equal(result.reason, type);
+    assert.equal(result.pet.lastDeath.announced, true);
+    assert.equal(dead.lastDeath.announced, false);
+    assert.equal(result.pet.lastDeath.reason, type);
+    assert.equal(getPetLifeToken(result.pet), getPetLifeToken(dead));
+    assert.equal(takeDeathComment(result.pet, START + DEATH_DELAY_MS + RETURN_FALL_MS).reason, null);
+    const storage = memoryStorage();
+    assert.equal(savePet(storage, result.pet), true);
+    assert.equal(takeDeathComment(loadPet(storage, START + DEATH_DELAY_MS), START + DEATH_DELAY_MS).reason, null);
+  }
+  assert.deepEqual(takeDeathComment(null, START), { pet: null, reason: null });
+  assert.equal(takeDeathComment(createPet(START), START).reason, null);
+});
+
+test('monster return retains zero during recovery and rejects old gestures across the fresh falling generation', () => {
+  const initial = { ...createPet(START), happiness: 1, paused: true, sleeping: true, hidden: true };
+  const oldToken = getPetLifeToken(initial);
+  const claimedAt = START + 2 * MINUTE;
+  const claimed = claimPetScare(initial, claimedAt).pet;
+  const returnAt = claimedAt + DEATH_DELAY_MS;
+  assert.equal(claimed.lastDeath.at, claimedAt);
+  assert.equal(claimed.lastDeath.reason, 'monster');
+  assert.equal(claimed.lastDeath.face, 'abandoned');
+  assert.equal(getPetPresence(claimed, claimedAt).state, 'absent');
+  assert.equal(claimed.hidden, false);
+  assert.equal(claimed.sleeping, false);
+  const recovering = finishPetScare(claimed, getScareToken(claimed), claimedAt + 1000);
+  assert.equal(recovering.happiness, 0);
+  assert.equal(getPetPresence(recovering, returnAt - 1).state, 'absent');
+  assert.equal(takeDeathComment(recovering, returnAt - 1).reason, null);
+  const returnComment = takeDeathComment(recovering, returnAt + 5000);
+  const fresh = returnComment.pet;
+  assert.equal(returnComment.reason, 'monster');
+  assert.equal(fresh.stage, 'forming');
+  assert.equal(fresh.generation, 2);
+  assert.equal(fresh.stageStartedAt, returnAt + 5000, 'late formation starts now, not at the old deadline');
+  assert.equal(fresh.paused, true);
+  assert.equal(fresh.hidden, false);
+  assert.equal(fresh.sleeping, false);
+  assert.deepEqual(stats(fresh), [80, 100, 90, 0]);
+  assert.equal(getPetPresence(fresh, fresh.stageStartedAt).face, 'abandoned');
+  assert.equal(getPetPresence(fresh, fresh.stageStartedAt).progress, 0);
+  assert.equal(takeDeathComment(fresh, fresh.stageStartedAt + 100).reason, null);
+  for (const offset of [0, RETURN_FALL_MS]) {
+    assert.equal(applyPetEvent(fresh, { id: 'old-callback', token: oldToken, type: 'lava' }, fresh.stageStartedAt + offset).accepted, false);
+  }
+  assert.equal(applyPetEvent(fresh, physicalEvent(fresh, 'throw', 'new-gesture'), fresh.stageStartedAt).accepted, false);
+  assert.equal(applyPetEvent(fresh, physicalEvent(fresh, 'throw', 'new-gesture'), fresh.stageStartedAt + RETURN_FALL_MS).accepted, true);
+  assert.equal(getPetPresence(fresh, fresh.stageStartedAt + RETURN_FALL_MS).face, null);
+});
+
+test('version three migration preserves lifecycle identity, with safe monster recovery metadata', () => {
+  for (const stage of ['alive', 'countdown', 'scaring', 'forming']) {
+    const legacy = { ...createPet(START), version: 3, generation: 9, stage, happiness: stage === 'alive' ? 55 : 0 };
+    delete legacy.lastDeath;
+    delete legacy.recentEventIds;
+    const migrated = normalizePet(legacy, START);
+    assert.equal(migrated.version, 4);
+    assert.equal(migrated.generation, 9);
+    assert.equal(migrated.stage, stage);
+    assert.equal(migrated.stageStartedAt, START);
+    assert.deepEqual(migrated.recentEventIds, []);
+    if (stage === 'scaring') {
+      assert.equal(migrated.lastDeath.reason, 'monster');
+      assert.equal(migrated.lastDeath.returnAt, START + DEATH_DELAY_MS);
+      assert.equal(advancePet(migrated, START + SCARE_LEASE_MS).stage, 'recovering');
+      assert.equal(advancePet(migrated, START + DEATH_DELAY_MS).generation, 10);
+    } else assert.equal(migrated.lastDeath, null);
+  }
+});
+
+test('death metadata normalization is bounded, strips extras and derives its deadline', () => {
+  const base = createPet(START);
+  const lastDeath = { id: 'saved-death', reason: 'lava', at: START, returnAt: 0, face: 'angry', announced: true, extra: true };
+  const normalized = normalizePet({ ...base, lastDeath, recentEventIds: [null, '', ' ', 1, 'a', 'a', 'b', 'x'.repeat(101)] }, START);
+  assert.deepEqual(normalized.lastDeath, {
+    id: 'saved-death', reason: 'lava', at: START, returnAt: START + DEATH_DELAY_MS, face: 'angry', announced: true,
+  });
+  assert.deepEqual(normalized.recentEventIds, ['a', 'b']);
+  for (const bad of [null, [], {}, { ...lastDeath, id: '' }, { ...lastDeath, id: 'x'.repeat(101) },
+    { ...lastDeath, reason: 'unknown' }, { ...lastDeath, at: -1 }, { ...lastDeath, at: NaN },
+    { ...lastDeath, face: 'bad' }]) {
+    assert.equal(normalizePet({ ...base, lastDeath: bad }, START).lastDeath, null);
+  }
+  const many = normalizePet({ ...base, recentEventIds: Array.from({ length: 100 }, (_, i) => `event-${i}`) }, START);
+  assert.equal(many.recentEventIds.length, 32);
+  assert.equal(many.recentEventIds[0], 'event-68');
+  const storage = memoryStorage(JSON.stringify(normalized));
+  assert.deepEqual(loadPet(storage, START).lastDeath, normalized.lastDeath);
+  assert.deepEqual(loadPet(storage, START).recentEventIds, ['a', 'b']);
 });

@@ -29,6 +29,7 @@ import { API_NOTES } from "../shared/api-notes.js";
 import { registerVideoRoutes } from "./video-routes.js";
 import { registerSiteAssetRecovery } from "./site-assets.js";
 import { registerSxbertyRoutes } from "./sxberty-routes.js";
+import { registerSxbertyFoodRoutes } from "./sxberty-food-routes.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(serverDir, "..");
@@ -51,7 +52,6 @@ const corsOptions = configuredOrigins.length
   ? { credentials: true, origin: (origin, callback) => callback(null, !origin || configuredOrigins.includes(origin)) }
   : undefined;
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
 
 const apiRateLimit = createIpRateLimiter({
   windowMs: positiveInteger(process.env.RATE_LIMIT_WINDOW_SECONDS, 60) * 1000,
@@ -97,6 +97,11 @@ async function requireAdmin(request, response, next) {
     return response.status(503).json({ error: "Admin authentication is temporarily unavailable" });
   }
 }
+
+registerSxbertyFoodRoutes(app, requireAdmin);
+// Food routes own their parsers so authentication and API limits run before
+// allocating multipart buffers or decoding JSON metadata.
+app.use(express.json({ limit: "1mb" }));
 
 registerEmojiRoutes(app, requireAdmin);
 registerSxbertyRoutes(app, requireAdmin);

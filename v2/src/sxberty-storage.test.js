@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readLatestPet, withPetLock } from "./sxberty-storage.js";
 import {
-  advancePet, careForPet, claimPetScare, createPet, finishPetScare, getScareToken,
-  savePet, COUNTDOWN_MS, SCARE_LEASE_MS, SXBERTY_STORAGE_KEY,
+  advancePet, applyPetEvent, careForPet, claimPetScare, createPet, finishPetScare, getPetLifeToken, getScareToken,
+  savePet, takeDeathComment, COUNTDOWN_MS, DEATH_DELAY_MS, RETURN_FALL_MS, SCARE_LEASE_MS, SXBERTY_STORAGE_KEY,
 } from "./verity-pet.js";
 
 function fakeLocks() {
@@ -66,11 +66,20 @@ test("serialized lease recovery and a delayed owner callback create only one new
     withPetLock(() => { persisted = advancePet(persisted, recoveredAt); }, locks),
     withPetLock(() => { persisted = finishPetScare(persisted, token, recoveredAt + 1); }, locks),
   ]);
+  assert.equal(persisted.generation, 1);
+  assert.equal(persisted.stage, "recovering");
+  assert.equal(persisted.happiness, 0);
+  const returnedAt = now + DEATH_DELAY_MS;
+  await Promise.all([
+    withPetLock(() => { persisted = advancePet(persisted, returnedAt); }, locks),
+    withPetLock(() => { persisted = advancePet(persisted, returnedAt); }, locks),
+    withPetLock(() => { persisted = finishPetScare(persisted, token, returnedAt); }, locks),
+  ]);
   assert.equal(persisted.generation, 2);
   assert.equal(persisted.stage, "forming");
-  assert.equal(persisted.adoptedAt, recoveredAt);
-  assert.equal(persisted.stageStartedAt, recoveredAt);
-  assert.equal(claimPetScare(persisted, recoveredAt + 2).scare, false);
+  assert.equal(persisted.adoptedAt, returnedAt);
+  assert.equal(persisted.stageStartedAt, returnedAt);
+  assert.equal(claimPetScare(persisted, returnedAt + 2).scare, false);
 });
 
 test("blocked Web Locks fall back without losing in-memory care", async () => {
@@ -148,10 +157,60 @@ test("denied storage and Web Locks retain the full in-memory lifecycle and pause
   assert.equal(scares, 1);
   const token = getScareToken(memory);
   await mutate(pet => finishPetScare(pet, token, COUNTDOWN_MS + 1000));
+  assert.equal(memory.generation, 1);
+  assert.equal(memory.stage, "recovering");
+  assert.equal(memory.happiness, 0);
+  await mutate(pet => advancePet(pet, COUNTDOWN_MS + DEATH_DELAY_MS));
   assert.equal(memory.generation, 2);
   assert.equal(memory.stage, "forming");
   assert.equal(memory.paused, true);
   assert.equal(memory.hidden, false);
   assert.equal(memory.happiness, 100);
   assert.equal(preferMemory, true);
+});
+
+test("serialized duplicate throws and stale deaths never double-charge happiness", async () => {
+  const now = 1_700_000_000_000;
+  let memory = createPet(now);
+  let serialized = JSON.stringify(memory);
+  const storage = { getItem: () => serialized, setItem: (_, value) => { serialized = value; } };
+  const locks = fakeLocks();
+  const token = getPetLifeToken(memory);
+  const mutate = event => withPetLock(() => {
+    const result = applyPetEvent(readLatestPet(storage, memory), event, now);
+    memory = result.pet;
+    savePet(storage, memory);
+    return result.accepted;
+  }, locks);
+  assert.deepEqual(await Promise.all([
+    mutate({ id: "drag-1", token, type: "throw" }),
+    mutate({ id: "drag-1", token, type: "throw" }),
+  ]), [true, false]);
+  assert.equal(memory.happiness, 99);
+  assert.deepEqual(await Promise.all([
+    mutate({ id: "drag-2", token, type: "offscreen" }),
+    mutate({ id: "late-lava", token, type: "lava" }),
+  ]), [true, false]);
+  assert.equal(memory.happiness, 94);
+  assert.equal(memory.lastDeath.reason, "offscreen");
+});
+
+test("two visible tabs announce each persisted death only once after returning", async () => {
+  const now = 1_700_000_000_000;
+  let memory = createPet(now);
+  memory = applyPetEvent(memory, { id: "lava-1", token: getPetLifeToken(memory), type: "lava" }, now).pet;
+  let serialized = JSON.stringify(memory);
+  const storage = { getItem: () => serialized, setItem: (_, value) => { serialized = value; } };
+  const locks = fakeLocks();
+  const take = at => withPetLock(() => {
+    const result = takeDeathComment(readLatestPet(storage, memory), at);
+    memory = result.pet;
+    savePet(storage, memory);
+    return result.reason;
+  }, locks);
+  assert.equal(await take(now + DEATH_DELAY_MS - 1), null);
+  assert.deepEqual(await Promise.all([take(now + DEATH_DELAY_MS), take(now + DEATH_DELAY_MS)]), ["lava", null]);
+  assert.equal(await take(now + DEATH_DELAY_MS + RETURN_FALL_MS), null);
+  assert.equal(memory.lastDeath.reason, "lava");
+  assert.equal(memory.lastDeath.announced, true);
 });
